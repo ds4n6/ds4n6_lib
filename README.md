@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://ds4n6.io">
-    <img src="http://ds4n6.io/images/DS4N6.jpg">
+    <img src="https://ds4n6.io/images/DS4N6.jpg">
   </a>
 
 <div>
