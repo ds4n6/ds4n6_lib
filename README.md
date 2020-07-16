@@ -1,8 +1,8 @@
 <!-- PROJECT LOGO -->
 
 <p align="center">
-  <a href="https://ds4n6.io">
-    <img src="https://ds4n6.io/images/DS4N6.jpg">
+  <a href="http://www.ds4n6.io">
+    <img src="http://www.ds4n6.io/images/DS4N6.jpg">
   </a>
 
 <div>
@@ -12,7 +12,7 @@
 </div>
 </p>
 
-<a href="http://ds4n6.io" title=""><img src="http://ds4n6.io/images/logo-s.png" alt="" /></a>
+<a href="http://www.ds4n6.io" title=""><img src="http://ds4n6.io/images/logo-s.png" alt="" /></a>
 
 DS4N6 stands for Data Science Forensics.
 
