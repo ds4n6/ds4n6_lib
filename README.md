@@ -26,7 +26,7 @@ and promote advances in the field
 ```
 The first (modest) alpha version of our ds4n6 python library, together with some easy-to-use python scripts, was originally made public after the presentation at the SANS DFIR Summit US, July 16-17. 
 
-Visit the project page: http://www.ds4n6.io/tools/ds4n6.py.html
+**For detailed information about the Project, the Library, itisit the project page: http://www.ds4n6.io/tools/ds4n6.py.html**
 
 ## Getting Started
 
