@@ -24,7 +24,9 @@ Bringing Data Science & Artificial Intelligence
 to the fingertips of the average Forensicator,
 and promote advances in the field
 ```
-We will be releasing the first (modest) version of our ds4n6 python library, together with some easy-to-use python scripts, after our public presentation at the SANS DFIR Summit US, July 16-17. 
+The first (modest) alpha version of our ds4n6 python library, together with some easy-to-use python scripts, was originally made public after the presentation at the SANS DFIR Summit US, July 16-17. 
+
+Visit the project page: http://www.ds4n6.io/tools/ds4n6.py.html
 
 ## Getting Started
 
