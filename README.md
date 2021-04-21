@@ -61,7 +61,7 @@ The installation can be easily done through pip.
 #### pip installation
 
 ```sh
-    pip install py-evtx Evtx ipyaggrid IPython ipywidgets keras matplotlib nbformat numpy pandas pyparsing qgrid ruamel.yaml sklearn tensorflow tqdm traitlets xmltodict ds4n6-lib
+    pip install python-evtx Evtx ipyaggrid IPython ipywidgets keras matplotlib nbformat numpy pandas pyparsing qgrid ruamel.yaml sklearn tensorflow tqdm traitlets xmltodict ds4n6-lib
 ```
 
 Finally, import in your python3 program or Jupyter Notebook as "ds".
