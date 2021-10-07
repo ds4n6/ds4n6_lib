@@ -50,7 +50,7 @@ import ds4n6_lib.macrobber   as d4_macrobber
 import ds4n6_lib.mactime     as d4_mactime
 import ds4n6_lib.plaso       as d4_plaso
 import ds4n6_lib.volatility  as d4_volatility
-
+import ds4n6_lib.tshark      as d4_tshark
 
 ###############################################################################
 # FUNCTIONS
@@ -145,12 +145,11 @@ def file_folder_select(rootpath="/", readfunc="", compname=None, f2read="", nbsa
         display(button, output)
 
         button.on_click(functools.partial(read_selected_file, compname=compname, nbsave_prefix=nbsave_prefix, **kwargs))
+        
 
 def xread(**kwargs):
     """ User interface for read data from different type of files
-
     Syntax: read_data_gui(tool="<tool>" [, rootpath="<rootpath>", notebook_file="<nbfile>", hostname="<hostname>", prefix="<prefix>", ext="<ext>")
-
     Args:
         tool (str) : tool used to generate files to readd
         rootpath (str) : path of the file/folder with files to read
@@ -194,6 +193,9 @@ def xread(**kwargs):
     func2exec = 'd4_'+tool+'.read_data'
 
     d4gui.folder_select(rootpath, functools.partial(eval(func2exec), **kwargs), f2read=f2read, nbsave_prefix=nbsave_prefix, notebook_file=notebook_file)
+        
+        
+        
 
 # dfmenu() & friends ##########################################################
 def xmenu(obj, engine="default"):
@@ -771,6 +773,7 @@ def xanalysis(dfs):
             with anl_out:
                 anl_result = d4com.anl(anl_src,change.new)
                 display(anl_result)
+
     analysis_selection.observe(select_analysis_eventhandler, names='value')
     
     export_result_button = widgets.Button(description="Export Result to d4.out", icon="download", layout={'width': '250px'}, disabled=False)

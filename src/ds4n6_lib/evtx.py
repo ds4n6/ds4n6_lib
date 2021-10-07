@@ -88,7 +88,6 @@ def evtid_dfs_build_raw(df):
         dfs[evtid] = df.query('EventID_ == @evtid', engine="python")
         #dfs[evtid] = dfs[evtid].drop(columns=['EventID_'])
         #dfs[evtid] = dfs[evtid].d4evtx.consolidate_columns()
-#    print(df.info())
     return dfs
 
 def evtid_dfs_build(df):
@@ -100,6 +99,8 @@ def evtid_dfs_build(df):
     """       
     if d4.debug >= 2:
         print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()]")
+
+
     dfs={}
 
     dfnrows = len(df)
@@ -558,6 +559,7 @@ def analysis_func(*args, **kwargs):
 # analysis_evtxfiles() ---------------------------------------------------------------
 
 def analysis_evtxfiles(dfs, type="", argtsmin="", argtsmax=""):
+
     if d4.debug >= 2:
         print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()]")
 
@@ -580,6 +582,7 @@ def analysis_evtxfiles(dfs, type="", argtsmin="", argtsmax=""):
         
 # analysis_evtids_stats() ---------------------------------------------------------------
 def analysis_evtids_stats(indf, type="", argtsmin="", argtsmax=""):
+
     if d4.debug >= 2:
         print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()]")
 
@@ -621,6 +624,7 @@ def analysis_access(evtsdf, type="", argtsmin="", argtsmax="", freq="D", stats=T
 
 def analysis_access_stats(obj, type="", firstdate="", lastdate="", freq="D", detail=True):
     # Input  (df) is a raw Security.evtx DF
+
     if d4.debug >= 2:
         print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()]")
 
@@ -670,6 +674,7 @@ def analysis_access_stats(obj, type="", firstdate="", lastdate="", freq="D", det
 
 def analysis_access_graph(obj, type="", firstdate="", lastdate=""):
     # Input  (df) is a raw Security.evtx DF
+
     if d4.debug >= 2:
         print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()]")
 
@@ -686,10 +691,6 @@ def analysis_access_graph(obj, type="", firstdate="", lastdate=""):
     evts4624_nonsysusers=evts4624[evts4624['TargetUserSid'].str.contains('S-1-5-21-')]
     useraccess=evts4624_nonsysusers.reset_index()[["Timestamp","WorkstationName", "IpAddress",'TargetUserName','LogonType']].set_index('Timestamp')
     user_access_uwil=useraccess[["WorkstationName", "IpAddress",'TargetUserName','LogonType']].copy()
-    # try:
-    #     user_access_uwil=useraccess[["WorkstationName", "IpAddress",'TargetUserName','LogonType']].loc[firstdate:lastdate].copy()
-    # except:
-    #     user_access_uwil=useraccess[["WorkstationName", "IpAddress",'TargetUserName','LogonType']].iloc[firstdate:lastdate].copy()
 
     user_access_uwil['WorkstationName'] = user_access_uwil['WorkstationName'].str.lower()
     user_access_uwil['TargetUserName'] = user_access_uwil['TargetUserName'].str.lower()
@@ -1219,6 +1220,69 @@ def simple_evtx_file_func(df, *args, **kwargs):
 
 def get_source_options():
     return ['consolidate_cols', 'apply_filters', 'beautify_cols']
+
+# MACHINE LEARNING ============================================================
+
+def find_anomalies_evtx(indf):
+    if 'D4_DataType_' in indf.columns:
+        if indf['evtxFileName_'][0]=='Microsoft-Windows-TaskScheduler%4Operational.evtx':
+            hml_df = convert_scheduled_tasks_ham_to_hml(indf)
+            return hml_df
+        elif indf['D4_DataType_'][0]=='evtx-hml':
+            hml_df = indf
+        else:
+            print("Event type not supported")
+            return None, None
+    
+        
+def convert_scheduled_tasks_ham_to_hml(evtx_ham_df):
+    
+    if evtx_ham_df['evtxFileName_'][0]!='Microsoft-Windows-TaskScheduler%4Operational.evtx':
+        return None
+    
+    hml_df = evtx_ham_df[['EventID_', 'Computer', '@Name', 'TaskName',  '@UserID', 'UserName', 'UserContext', 'ResultCode', 'ActionName']]
+    hml_df.reset_index(inplace=True)
+    # Rename Columns
+    hml_df = hml_df.rename(columns={"Timestamp":   'Timestamp_'})
+    hml_df = hml_df.rename(columns={'Computer':    'Computer_'})
+    hml_df = hml_df.rename(columns={'@Name':       'AtName_'})
+    hml_df = hml_df.rename(columns={'TaskName':    'TaskName_'})
+    hml_df = hml_df.rename(columns={'UserName':    'UserName_'})
+    hml_df = hml_df.rename(columns={'UserContext': 'UserContext_'})
+    hml_df = hml_df.rename(columns={'@UserID':     'AtUserID_'})
+    hml_df = hml_df.rename(columns={'ActionName':  'ActionName_'})
+    hml_df = hml_df.rename(columns={'ResultCode':  'ResultCode_'})
+
+    # Computer_ -----------------------------------------------------------------------------------
+    hml_df['Computer_'] = hml_df['Computer_'].str.lower()
+
+    # UserName / UserContext ----------------------------------------------------------------------
+    hml_df['UserName_']    = hml_df['UserName_'].str.lower()
+    hml_df['UserContext_'] = hml_df['UserContext_'].str.lower()
+
+    # Combine UserName + UserContext Cols
+    hml_df['UserNC_'] = hml_df['UserName_']
+    hml_df['UserNC_'] = hml_df['UserNC_'].fillna(hml_df['UserContext_'])
+    hml_df = hml_df.drop(columns=['UserName_', 'UserContext_'])
+
+    # Add Domain d4_null to entries with no domain
+    hml_df['UserNC_'] = hml_df['UserNC_'].str.replace('^([^\\\\]*)$', 'd4_null\\\\\\1')
+
+    # Fill NaNs with default values
+    hml_df['UserNC_']       = hml_df['UserNC_'].fillna('d4_null')
+
+    # Hostname_ -----------------------------------------------------------------------------------
+    # This column is needed to merge tskevtx + tskflist. We will drop it when running the model 
+    hml_df['Hostname_'] = hml_df['Computer_'].str.replace('\..*','')
+    hml_df = hml_df.drop(columns=['Computer_'])
+    # Fill NaNs with default values ================================================================
+    hml_df['ResultCode_']   = hml_df['ResultCode_'].fillna("-64646464")
+    hml_df['ActionName_']   = hml_df['ActionName_'].fillna('d4_null')
+
+    hml_df['D4_DataType_'] = 'evtx-hml'
+
+    hml_df = hml_df.reset_index(drop=True)
+    return hml_df
 
 # ACCESSOR ====================================================================
 

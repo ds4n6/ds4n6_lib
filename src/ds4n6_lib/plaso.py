@@ -68,6 +68,7 @@ def read_data(evdl, **kwargs):
 
     if   bool(re.search(r"\.csv$", evdl, re.IGNORECASE)):
         return read_plaso_l2tcsv(evdl, **kwargs)
+    
     elif bool(re.search(r"\.json$", evdl, re.IGNORECASE)):
         return read_plaso_json(evdl, **kwargs)
     else:
@@ -86,6 +87,7 @@ def read_plaso_l2tcsv(plasof, **kwargs):
     if d4.debug >= 3:
         print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()]")
 
+    
     dfs = {}
     # When creating the .csv file with psort, make sure to filter out events 
     # with absurd timestamps (e.g. < 1970 or > the current year). 
@@ -93,26 +95,32 @@ def read_plaso_l2tcsv(plasof, **kwargs):
     # psort.py -z UTC -o l2tcsv -w plaso_file.csv plaso_file.dump \ 
     #     "date > '1960-01-01 00:00:00' AND date < '2020-12-31 23:59:59'"
     plines=pd.read_csv(plasof)
+    
+    if 'date' in plines.columns:
+        # Now, we need to clean the data. There may be wrong values.
+        plines=plines[~plines['date'].str.contains('/00/')]
+        # Let's include:
+        # - a timestamp column which combines the date and time cols, and is 
+        #   of type datetime64
+        # - a column "sourcetype_clean" similar to "sourcetype" but "cleaner",
+        #   i.e. easier to use
+        plines.insert(0, 'timestamp', 0)
+        plines.insert(7, 'sourcetype_clean', '')
+        plines['sourcetype_clean']=plines['sourcetype'].str.replace('UNKNOWN : ','').str.replace(' ','_')
+        plines['timestamp']=pd.to_datetime(plines['date']+" "+plines['time'])
 
-    # Now, we need to clean the data. There may be wrong values.
-    plines=plines[~plines['date'].str.contains('/00/')]
-    # Let's include:
-    # - a timestamp column which combines the date and time cols, and is 
-    #   of type datetime64
-    # - a column "sourcetype_clean" similar to "sourcetype" but "cleaner",
-    #   i.e. easier to use
-    plines.insert(0, 'timestamp', 0)
-    plines.insert(7, 'sourcetype_clean', '')
-    plines['sourcetype_clean']=plines['sourcetype'].str.replace('UNKNOWN : ','').str.replace(' ','_')
-    plines['timestamp']=pd.to_datetime(plines['date']+" "+plines['time'])
-
-    # Let's create a DF for each source (pe_compilation_time, winlogon, ...),
-    # It will be easier for analysis
-    srctypes = plines['sourcetype_clean'].unique()
-    for srctype in srctypes:
-        srctypevar = str(srctype).lower()
-        print('Reading source_type %-40s into dataframe ->  %-40s' % (srctype,srctypevar))
-        dfs[srctypevar] = plines[plines['sourcetype_clean'] == srctype ].copy()
+        # Let's create a DF for each source (pe_compilation_time, winlogon, ...),
+        # It will be easier for analysis
+        srctypes = plines['sourcetype_clean'].unique()
+        for srctype in srctypes:
+            srctypevar = str(srctype).lower()
+            print('Reading source_type %-40s into dataframe ->  %-40s' % (srctype,srctypevar))
+            dfs[srctypevar] = plines[plines['sourcetype_clean'] == srctype ].copy()
+    
+    else:
+        dfs = plines
+    
+    
     return dfs
 
 def read_plaso_json(evdl, **kwargs):
@@ -252,7 +260,8 @@ def harmonize(df, **kwargs):
 
     # Resort columns
     cols = df.columns.tolist()
-    cols.insert(len(cols), cols.pop(cols.index('message')))
+    if 'message' in df.columns:
+        cols.insert(len(cols), cols.pop(cols.index('message')))
     cols.insert(len(cols), cols.pop(cols.index('pevtnum')))
     cols.insert(0, cols.pop(cols.index('timestamp_desc')))
     df = df.reindex(columns=cols)
@@ -289,8 +298,8 @@ def harmonize_plaso_artifact_common(df):
     """
     if d4.debug >= 3:
         print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()]")
-
-    df = df.drop(columns=['timestamp_desc', '__container_type__', '__type__', 'data_type', 'inode', 'parser', 'pathspec', 'sha256_hash', 'message', 'pevtnum'])
+    cols = ['timestamp_desc', '__container_type__', '__type__', 'data_type', 'inode', 'parser', 'pathspec', 'sha256_hash', 'message', 'pevtnum'] 
+    df = df.drop(columns=[col for col in cols if col in df.columns])
     return df
 
 # ARTIFACT EXTRACTION FUNCTIONS ###############################################
@@ -371,7 +380,6 @@ def plaso_extract_single_evtx(plevtxdf, evtxf, nwf=d4.main_nwf, recovered=False,
 
 def plaso_extract_evtx(plobj, nwf=d4.main_nwf, recovered=False, save_xml=False, xml_filename=""):
     # Input can be either a full plaso DFs dict or a DF of plaso evtx
-
     if d4.debug >= 3:
         print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()]")
 
@@ -529,6 +537,7 @@ def plaso_get_evtxdfs(pldfs, hostname, datapath="", notebook_file="", evtxdfs_us
 
                     print("- pickle File path saved to next notebook cell")
                     print("")
+
                 else:
                     print("- ERROR: Directory does not exist:")
                     print("         "+datapath)
