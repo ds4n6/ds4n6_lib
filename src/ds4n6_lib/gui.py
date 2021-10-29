@@ -50,7 +50,6 @@ import ds4n6_lib.macrobber   as d4_macrobber
 import ds4n6_lib.mactime     as d4_mactime
 import ds4n6_lib.plaso       as d4_plaso
 import ds4n6_lib.volatility  as d4_volatility
-import ds4n6_lib.tshark      as d4_tshark
 
 ###############################################################################
 # FUNCTIONS
