@@ -22,7 +22,7 @@ import base64
 
 # DS IMPORTS ------------------------------------------------------------------
 import pandas as pd
-from pandas.api.types import is_string_dtype
+from pandas.api.types import is_string_dtype, is_categorical_dtype
 import ipywidgets as widgets
 from ipywidgets import Layout
 from IPython import get_ipython
@@ -483,6 +483,8 @@ class dfs_explorer():
             for col in self.current_df.columns:
                 if is_string_dtype(self.current_df[col]):
                     self.current_df[col] = self.current_df[col].astype("object")
+                if is_categorical_dtype(self.current_df[col]) and len(self.current_df[col].cat.categories) == 0:
+                    self.current_df[col].cat.add_categories("", inplace=True)
             self.grid = qgrid.show_grid(self.current_df, show_toolbar=True, grid_options={'forceFitColumns':False, 'maxVisibleRows': self.max_rows})
         else:
             pd.set_option("display.max_rows", self.max_rows)

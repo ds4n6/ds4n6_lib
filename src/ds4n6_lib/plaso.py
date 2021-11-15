@@ -214,6 +214,7 @@ def read_plaso_json(evdl, **kwargs):
 
         # Harmonize - - - - - - - - - - - - - - - - - - - - - - - - - -
         if do_harmonize :
+            print(" ")
             print("- Harmonizing pandas dataframes: ")
             keys = dfs.keys()
             for key in keys:
@@ -380,6 +381,7 @@ def plaso_extract_single_evtx(plevtxdf, evtxf, nwf=d4.main_nwf, recovered=False,
 
 def plaso_extract_evtx(plobj, nwf=d4.main_nwf, recovered=False, save_xml=False, xml_filename=""):
     # Input can be either a full plaso DFs dict or a DF of plaso evtx
+
     if d4.debug >= 3:
         print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()]")
 
@@ -919,6 +921,8 @@ def analysis_func(*args, **kwargs):
         print("Available plaso analysis types:")
         if objtype == None or objtype == "str-help" or objtype == "str-list" or  re.search("^dict-pandas_dataframe-plaso", objtype):
             print("- plaso_categories:  No.events & first/last event per plaso category (Input: pldfs)")
+        if objtype == None or objtype == "str-help" or objtype == "str-list" or  re.search("^dict-pandas_dataframe-plaso", objtype):
+            print("- plaso_overview: Overview (Input: pldfs)")
 
     if d4.debug >= 3:
         print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()]")
@@ -964,6 +968,8 @@ def analysis_func(*args, **kwargs):
     if re.search("^dict-pandas_dataframe-plaso", objtype):
         if anltype == "plaso_categories":
             return analysis_plaso_categories(*args, **kwargs)
+        if anltype == "plaso_overview":
+            return analysis_plaso_overview(*args, **kwargs)
 
     print("INFO: [d4pl] No analysis functions available for this data type ("+objtype+")")
 
@@ -1008,6 +1014,58 @@ def analysis_plaso_categories(*args, **kwargs):
         outdf = outdf.append(row,ignore_index=True)
 
     return outdf
+
+def analysis_plaso_overview(*args, **kwargs):
+    """ Analysis that gives general device information
+
+        Args: 
+        obj:          Input data (typically DF or dict of DFs)
+        Returns: 
+        pandas.Dataframe with the results of the analysis
+
+    """    
+    if d4.debug >= 3:
+        print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()]")
+
+    dfs = args[0]
+    
+    objtype = d4com.data_identify(dfs)
+    
+    if objtype != "dict-pandas_dataframe-plaso-raw":
+        print("ERROR: Invalid object for function: "+objtype)
+        print("       Input object should be:      dict-pandas_dataframe-plaso")
+        return
+    
+    df = pd.DataFrame()
+    overview_df = pd.DataFrame()
+    users_df = pd.DataFrame()
+    
+    for key in dfs:
+        if key == 'windows_registry_installation':
+            df = dfs[key]
+            overview_df['Product Name'] = df['product_name']
+            overview_df['Installation Date'] = df['Timestamp_'].iloc[1]
+            
+        if key == 'windows_registry_timezone':
+            df = dfs[key]
+            overview_df['Timezone'] = df['configuration']
+        
+        if key == 'windows_registry_sam_users':
+            df = dfs[key]
+            users_df['User Name'] = df['username']
+            users_df['First Connection'] = df['Timestamp_']
+            
+    outdf = overview_df.iloc[0].to_frame()
+    
+    outdf['System Information'] = outdf[0]
+    
+    outdf = outdf.drop(columns=[0,])
+    
+    display(outdf)
+    
+    return users_df
+    
+    
 
 # DATAFRAME ACCESSORS =========================================================
 

@@ -88,6 +88,7 @@ def evtid_dfs_build_raw(df):
         dfs[evtid] = df.query('EventID_ == @evtid', engine="python")
         #dfs[evtid] = dfs[evtid].drop(columns=['EventID_'])
         #dfs[evtid] = dfs[evtid].d4evtx.consolidate_columns()
+#    print(df.info())
     return dfs
 
 def evtid_dfs_build(df):
@@ -99,7 +100,6 @@ def evtid_dfs_build(df):
     """       
     if d4.debug >= 2:
         print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()]")
-
 
     dfs={}
 
@@ -159,7 +159,7 @@ def evtid_dfs_build(df):
         alldf = pd.concat([alldf,thisdf])
 
     print("")
-
+    
     # alldf / dfs['all']
     alldf = alldf.sort_values(by='EventRecordID')
 
@@ -445,6 +445,7 @@ def analysis(*args, **kwargs):
     return analysis_func(*args, **kwargs)
 
 def analysis_func(*args, **kwargs):
+
     """ Umbrella function that redirects to different types of analysis 
         available on the input data
 
@@ -481,6 +482,9 @@ def analysis_func(*args, **kwargs):
         if objtype == "str-help" or objtype == "str-list" or re.search("^pandas_dataframe-evtx-ham", objtype):
             anlav = True
             print("- access:      Logon info summary (4624,...)              (Input: secevtxdf)")
+        if objtype == "str-help" or objtype == "str-list" or re.search("^pandas_dataframe-evtx-ham", objtype):
+            anlav = True
+            print("- failed logons:      Failed Logons info (4625,...)              (Input: secevtxdf)")
 
         if anlav == False:
             print('- No analysis modules available for this object ('+objtype+').')
@@ -546,6 +550,8 @@ def analysis_func(*args, **kwargs):
             return analysis_access(*args, **kwargs)
         elif anltype == "evtid_stats":
             return analysis_evtids_stats(*args, **kwargs)
+        elif anltype == "failed logons":
+            return failed_logons_info(*args, **kwargs)
         else:
             print("ERROR: [evtx] Unknown analysis type: "+anltype)
             return
@@ -579,7 +585,8 @@ def analysis_evtxfiles(dfs, type="", argtsmin="", argtsmax=""):
         outdf = outdf.append(row,ignore_index=True)
 
     return outdf
-        
+
+
 # analysis_evtids_stats() ---------------------------------------------------------------
 def analysis_evtids_stats(indf, type="", argtsmin="", argtsmax=""):
 
@@ -606,6 +613,40 @@ def analysis_evtids_stats(indf, type="", argtsmin="", argtsmax=""):
     #display(Markdown("**"+str(evtxlog)+"**"))
 
     return df
+
+# failed_logons_info() ---------------------------------------------------------------
+
+def failed_logons_info(evtsdf, type="", argtsmin="", argtsmax="", graph=True):
+    if d4.debug >= 2:
+        print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()]")
+    if evtsdf['EventID_'][0] == 4625:
+        failedlogonslist = evtsdf['EventID_']
+        failedlogonsdf = pd.DataFrame(failedlogonslist)
+        failedlogonsdf['Timestamp'] = failedlogonslist.index
+        stats4625 = pd.Series(failedlogonsdf['Timestamp']).resample('D').nunique()
+        stats4625df = pd.DataFrame(stats4625)
+        stats4625_df = pd.DataFrame()
+        stats4625_df['Failed Logons'] = stats4625df['Timestamp']
+
+        if graph :
+            failed_logons_graph(evtsdf)
+    
+        return stats4625_df
+    else:
+        print("Event ID not supported. This analysis is meant to be used with 4625 Security events.")
+        
+def failed_logons_graph(obj):
+    if d4.debug >= 2:
+        print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()]")
+    
+    secevtxdf = obj
+
+    failedlogonslist = secevtxdf['EventID_']
+    failedlogonsdf = pd.DataFrame(failedlogonslist)
+    failedlogonsdf['Timestamp'] = failedlogonslist.index
+    pd.Series(failedlogonsdf['Timestamp']).resample('H').nunique().plot.bar()
+    plt.show()
+    
 
 # analysis_access() ---------------------------------------------------------------
 
@@ -691,6 +732,10 @@ def analysis_access_graph(obj, type="", firstdate="", lastdate=""):
     evts4624_nonsysusers=evts4624[evts4624['TargetUserSid'].str.contains('S-1-5-21-')]
     useraccess=evts4624_nonsysusers.reset_index()[["Timestamp","WorkstationName", "IpAddress",'TargetUserName','LogonType']].set_index('Timestamp')
     user_access_uwil=useraccess[["WorkstationName", "IpAddress",'TargetUserName','LogonType']].copy()
+    # try:
+    #     user_access_uwil=useraccess[["WorkstationName", "IpAddress",'TargetUserName','LogonType']].loc[firstdate:lastdate].copy()
+    # except:
+    #     user_access_uwil=useraccess[["WorkstationName", "IpAddress",'TargetUserName','LogonType']].iloc[firstdate:lastdate].copy()
 
     user_access_uwil['WorkstationName'] = user_access_uwil['WorkstationName'].str.lower()
     user_access_uwil['TargetUserName'] = user_access_uwil['TargetUserName'].str.lower()
@@ -936,6 +981,7 @@ def consolidate_columns_func(df):
 # simple_*_func() ====================================================================
 
 def simple_func(obj, *args, **kwargs):
+
     if d4.debug >= 2:
         print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()]")
 
@@ -1128,8 +1174,6 @@ def simple_evtx_file_func(df, *args, **kwargs):
 
     # If specific evtids (either by numbers or macro) are defined, filter for them
     if evtidspar == "help" or evtidspar == "list":
-        #macrosdf = pd.DataFrame([], columns=['Name', 'EventIDs'])
-        #for key in evtid_groups[evtxfname].keys:
         macrosdf = pd.DataFrame.from_dict(evtid_groups[evtxfname], orient='index').fillna("-")
         display(macrosdf)
         return
