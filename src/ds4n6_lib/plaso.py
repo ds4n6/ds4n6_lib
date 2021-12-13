@@ -854,7 +854,10 @@ def simple_func(df, **kwargs):
             d4utl.display_side_by_side([hiddencolsdf, concolsdf], ['HIDDEN COLUMNS', 'CONSTANT COLUMNS'])
         elif show_constant_cols  and show_hidden_cols == False:
             display(Markdown("**Constant Columns**"))
+            max_rows = pd.get_option("display.max_rows")
+            pd.set_option("display.max_rows", None)
             display(concolsdf)
+            pd.set_option("display.max_rows", max_rows)
         elif show_constant_cols == False and show_hidden_cols :
             display(Markdown("**Hidden Columns**"))
             display(hiddencolsdf)
