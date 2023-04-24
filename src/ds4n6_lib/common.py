@@ -33,6 +33,7 @@ import ds4n6_lib.mactime     as d4_mactime
 import ds4n6_lib.plaso       as d4_plaso
 import ds4n6_lib.volatility  as d4_volatility
 import ds4n6_lib.tshark      as d4_tshark
+import ds4n6_lib.sabonis     as d4_sabonis
 # Artifacts - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 import ds4n6_lib.evtx        as d4_evtx
 import ds4n6_lib.flist       as d4_flist
@@ -284,7 +285,10 @@ def read_data_common(evdl, **kwargs):
                 if d4.debug >= 3:
                     print("DEBUG: [com-read_data_common()] [folder_parsing_mode: generic] -> File")
 
-                print("- Reading tool file:")
+                if tool is not None:
+                    print("- Reading " + tool + " file:")
+                else:
+                    print("- Reading tool file:")
                 print("    "+evdl)
 
                 df = pd.read_csv(evdl, encoding=encoding, names=header_names)
@@ -294,12 +298,17 @@ def read_data_common(evdl, **kwargs):
 
                 # Harmonize - - - - - - - - - - - - - - - - - - - - - - - - - -
                 dftype = df.d4.df_source_identify()
-
                 
                 if do_harmonize and len(df) > 0:
-                    if dftype == "pandas_dataframe-"+tool+"-raw":
-                        print("- Harmonizing to "+tool+" HAM...")
+                    print("- Harmonizing...")
+                    if pluginisdfname == True:
+                        df = harmonize(df, **kwargs, plugin=dfname)
+                    else:
                         df = harmonize(df, **kwargs)
+
+                    #if dftype == "pandas_dataframe-"+tool+"-raw":
+                    #    print("- Harmonizing to "+tool+" HAM...")
+                    #    df = harmonize(df, **kwargs)
 
                 # Save to pickle  - - - - - - - - - - - - - - - - - - - - - - - 
                 save_pickle(evdl, df, use_pickle, do_harmonize)
@@ -778,6 +787,9 @@ def simple_func(df, *args, **kwargs):
     # tshark -----------------------------------------------
     elif re.search("^pandas_dataframe-tshark", dfsrc):
         dfout = df.d4_tshark.simple(*args, **kwargs)
+    # sabonis ----------------------------------------------
+    elif re.search("^pandas_dataframe-sabonis", dfsrc):
+        dfout = df.d4_sabonis.simple(*args, **kwargs)
     # DATA TYPES ===========================================
 
     # amcache ----------------------------------------------
@@ -846,8 +858,9 @@ def simple_common(df, *args, **kwargs):
         print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()]")
 
     # Arg. Parsing -------------------------------------------------------------
-    hiddencols             = kwargs.get('hiddencols',             [])
-    nonhiddencols          = kwargs.get('nonhiddencols',          [])
+    hiddencolsuser         = kwargs.get('hiddencolsuser',         []) # WARNING: This arg must be specified as list: ['xxx']
+    hiddencols             = kwargs.get('hiddencols',             []) # WARNING: This arg must be specified as list: ['xxx']
+    nonhiddencols          = kwargs.get('nonhiddencols',          []) # WARNING: This arg must be specified as list: ['xxx']
     maxdfbprintlines       = kwargs.get('maxdfbprintlines',       20)
     max_rows               = kwargs.get('max_rows',               maxdfbprintlines)
     collapse_constant_cols = kwargs.get('collapse_constant_cols', True)
@@ -929,6 +942,12 @@ def simple_common(df, *args, **kwargs):
             print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()] hide_cols")
 
         for col in hiddencols:
+            if col not in nonhiddencols:
+                if col in dfb.columns:
+                    hiddencolsdf = pd.concat([hiddencolsdf, pd.DataFrame([col])], ignore_index=True)
+                    dfb = dfb.drop(columns=[col])
+
+        for col in hiddencolsuser:
             if col not in nonhiddencols:
                 if col in dfb.columns:
                     hiddencolsdf = pd.concat([hiddencolsdf, pd.DataFrame([col])], ignore_index=True)
@@ -1093,6 +1112,9 @@ def harmonize_func(*args, **kwargs):
     # tshark  - - - - - - - - - - - - - - - - - - - - - - - - - - - 
     elif re.search("^dict-pandas_dataframe-tshark", objtype) or re.search("^pandas_dataframe-tshark", objtype):
         return d4_tshark.harmonize(*args, **kwargs)
+    # sabonis - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+    elif re.search("^dict-pandas_dataframe-sabonis", objtype) or re.search("^pandas_dataframe-sabonis", objtype):
+        return d4_sabonis.harmonize(*args, **kwargs)
     # volatility - - - - - - - - - - - - - - - - - - - - - - - - - 
     elif re.search("^dict-pandas_dataframe-volatility", objtype) or re.search("^pandas_dataframe-volatility", objtype):
         return d4_volatility.harmonize(*args, **kwargs)

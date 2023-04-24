@@ -53,6 +53,8 @@ Install requirements:
     - tqdm
     - traitlets
     - xmltodict
+    - networkx
+    - gensim
 
 ### Installation
 

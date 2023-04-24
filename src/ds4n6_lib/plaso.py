@@ -66,6 +66,8 @@ def read_data(evdl, **kwargs):
     if d4.debug >= 3:
         print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()]")
 
+    kwargs.setdefault('tool', 'plaso')
+
     if   bool(re.search(r"\.csv$", evdl, re.IGNORECASE)):
         return read_plaso_l2tcsv(evdl, **kwargs)
     
@@ -147,7 +149,7 @@ def read_plaso_json(evdl, **kwargs):
     use_pickle               = kwargs.get('use_pickle'              , True)
 
     pklrawf = evdl+'.raw.pkl'
-    pklhtmf = evdl+'.htm.pkl'
+    pklhtmf = evdl+'.ham.pkl'
 
     if os.path.exists(pklhtmf) and use_pickle  and do_harmonize :
 
@@ -379,7 +381,7 @@ def plaso_extract_single_evtx(plevtxdf, evtxf, nwf=d4.main_nwf, recovered=False,
 
     return outdf
 
-def plaso_extract_evtx(plobj, nwf=d4.main_nwf, recovered=False, save_xml=False, xml_filename=""):
+def plaso_extract_evtx(plobj, nwf=d4.main_nwf, recovered=False, save_xml=False, xml_filename="",files2process=[]):
     # Input can be either a full plaso DFs dict or a DF of plaso evtx
 
     if d4.debug >= 3:
@@ -396,13 +398,21 @@ def plaso_extract_evtx(plobj, nwf=d4.main_nwf, recovered=False, save_xml=False, 
         return
  
     # Remove the path / preserve the file name only
+    # OLD:
+    #  # Windows path (if plaso has been run on a disk image or live Windows System)
+    #  plevtxdf['LogFile'] = plevtxdf['pathspec'].apply(lambda x: x['location']).str.replace(".*\\\\","").copy()
+    #  # Linux path (if plaso has been run on a Linux System, e.g. on extracted Windows artifacts)
+    #  plevtxdf['LogFile'] = plevtxdf['pathspec'].apply(lambda x: x['location']).str.replace(".*/","").copy()
+    # 
+
+    # For evtx, since they are self-contained artifacts, we can use the plaso "filename" field 
     # Windows path (if plaso has been run on a disk image or live Windows System)
-    plevtxdf['LogFile'] = plevtxdf['pathspec'].apply(lambda x: x['location']).str.replace(".*\\\\","").copy()
+    plevtxdf['LogFile'] = plevtxdf['filename'].str.replace(".*\\\\","").copy()
     # Linux path (if plaso has been run on a Linux System, e.g. on extracted Windows artifacts)
-    plevtxdf['LogFile'] = plevtxdf['pathspec'].apply(lambda x: x['location']).str.replace(".*/","").copy()
+    plevtxdf['LogFile'] = plevtxdf['filename'].str.replace(".*/","").copy()
 
     #plevtxdf['LogFile'] = plevtxdf['pathspec'].apply(lambda x: "["+str(x['parent']['location'])+"]"+str(x['location']))
-    evtxfs = plevtxdf['LogFile'].drop_duplicates() 
+    #evtxfs = plevtxdf['LogFile'].drop_duplicates() 
     #evtxfs=plevtxdf['pathspec'].apply(lambda x: "["+str(x['parent']['location'])+"]"+str(x['location'])).str.replace("/","",1).drop_duplicates().str.replace(".*\\\\","")
 
     # Event Log files present in the plaso evtx DF
@@ -412,10 +422,31 @@ def plaso_extract_evtx(plobj, nwf=d4.main_nwf, recovered=False, save_xml=False, 
     plevtxdf['recovered'] = plevtxdf['recovered'].astype(bool)
 
     # DICT OF INDIVIDUAL DFs (one per evtx log file) - - - - - - - - - - - - - - - - - - - 
+    if files2process != []:
+        # TODO: This has not been tested yet. Chances are that this doesn't work and you 
+        #       need to polish this 
+        evtxfs = files2process
+        print("- Files to process:   " + str(files2process))
+        print("\n")
+    else:
+        evtxfs = plevtxdf['LogFile'].drop_duplicates() 
+        files2process = evtxfs.to_list()
+
+    print("- Files to process: " + str(files2process))
+
     print("- Processing:")
+
     for evtxf in evtxfs:
         evtxfbase = re.sub('^.*\\\\', '', evtxf)
-        print("  + "+evtxfbase)
+        print("  + " + evtxfbase, end='')
+
+        # If the files2process arg is provided, process just the logs specified
+        if evtxf not in files2process:
+            print(" [Skipping]")
+            continue
+        else:
+            print("\n")
+
         xml_filename_file=None
         # XML Filename
         if save_xml :
@@ -447,14 +478,19 @@ def plaso_extract_evtx(plobj, nwf=d4.main_nwf, recovered=False, save_xml=False, 
 
         evtxdfs[evtxfbase] = evtxdf
 
+        print(" [OK] ")
+
     print("- Done")
 
     return evtxdfs
 
-def plaso_get_evtxdfs(pldfs, hostname, datapath="", notebook_file="", evtxdfs_usepickle=True, save_xml=False, xml_filename=""):
+                
+def plaso_get_evtxdfs(pldfs, hostname, datapath="", filename="", notebook_file="", evtxdfs_usepickle=True, save_xml=False, xml_filename="",files2process=[], savepathtonb=True):
 
     if d4.debug >= 3:
         print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()]")
+
+    filenamebase = os.path.basename(filename)
 
     print("Extracting evtx DFs dict from plaso DFs dict.")
 
@@ -480,11 +516,16 @@ def plaso_get_evtxdfs(pldfs, hostname, datapath="", notebook_file="", evtxdfs_us
         # If we don't find the cell with the saved path for evtxdfspklf,
         # we will try to find the file in the datapath directory
         if datapath != "":
-            evtxdfspklf = datapath+'/'+hostname+'.evtxdfs.pickle'
+            if filename == "":
+                file2read = hostname + '.evtxdfs.raw.pickle'
+            else:
+                file2read = filenamebase
+                
+            evtxdfspklf = datapath + '/' + file2read
             print("- Looking for evtxdfs pickle file in datapath directory:")
           
             if os.path.exists(evtxdfspklf):
-                print("  + Found: "+evtxdfspklf)
+                print("  + Found: " + evtxdfspklf)
             else:
                 print("  + Not found.")
 
@@ -495,7 +536,7 @@ def plaso_get_evtxdfs(pldfs, hostname, datapath="", notebook_file="", evtxdfs_us
     if evtxdfs_usepickle  and evtxdfspklf != "":
         if os.path.exists(evtxdfspklf):
             # Read from pickle
-            print("- Reading evtx DFs dictionary (evtxdfs) from pickle file...")
+            print("- Reading raw evtx DFs dictionary (evtxdfs) from pickle file...")
             evtxdfs = pickle.load(open(evtxdfspklf,"rb"))
             print("- Done.")
             extract_records = False
@@ -510,7 +551,7 @@ def plaso_get_evtxdfs(pldfs, hostname, datapath="", notebook_file="", evtxdfs_us
     if extract_records :
         # plevtxdf = pldfs['windows_evtx_record']
         print("- Extracting records...")
-        evtxdfs = plaso_extract_evtx(pldfs, save_xml=save_xml, xml_filename=xml_filename)
+        evtxdfs = plaso_extract_evtx(pldfs, save_xml=save_xml, xml_filename=xml_filename,files2process=files2process)
 
         if len(evtxdfs) == 0:
             print("ERROR: No records read.")
@@ -519,7 +560,7 @@ def plaso_get_evtxdfs(pldfs, hostname, datapath="", notebook_file="", evtxdfs_us
         # Save to pickle
         if evtxdfs_usepickle :
             if datapath == "":
-                print("WARNING: data_path argument not provided. Cannot save pickle file.")
+                print("WARNING: datapath argument not provided. Cannot save pickle file.")
             else:
                 print("- Saving evtx DFs dictionary (dfs) as pickle file:")
                 print("   "+evtxdfspklf)
@@ -529,20 +570,16 @@ def plaso_get_evtxdfs(pldfs, hostname, datapath="", notebook_file="", evtxdfs_us
                     pickle.dump(evtxdfs, open(evtxdfspklf, "wb" ))
                     print("- Done.")
 
-                savepathtonb = True
                 if savepathtonb :
+                    print("- Saving path in jupyter notebook cell...")
                     cell_a = "# Automatically created - DO NOT EDIT OR REMOVE unless you want to change the file to read (in that case, remove this cell)\n"
                     cell_b = "# "+str(datetime.datetime.now())+"\n"
                     cell_c = "# "+hostname+'_evtxdfspklf_f2read = "'+evtxdfspklf+'"'
                     cell   = cell_a + cell_b + cell_c
                     get_ipython().set_next_input(cell)
 
-                    print("- pickle File path saved to next notebook cell")
+                    print("  + pickle File path saved to next notebook cell")
                     print("")
-
-                else:
-                    print("- ERROR: Directory does not exist:")
-                    print("         "+datapath)
 
     return evtxdfs
 

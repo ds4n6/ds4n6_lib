@@ -82,12 +82,12 @@ def ml_model_execution_quick_case(**kwargs):
     # preddf                 = kwargs.get('preddf',                 None)
     # model_type             = kwargs.get('model_type',             None)
     # lstm_units             = kwargs.get('lstm_units',             None)
-    # lstm_time_steps        = kwargs.get('lstm_time_steps',        None)
+    # lstm_timesteps        = kwargs.get('lstm_timesteps',        None)
     # activation_function    = kwargs.get('activation_function',    None)
     # model_filename         = kwargs.get('model_filename',         None)
-    # loops                  = kwargs.get('loops',                  1)
+    # fitloops               = kwargs.get('fitloops',               1)
     # epochss                = kwargs.get('epochss',                [2])
-    # error_ntop             = kwargs.get('error_ntop',             5000)
+    # loss_ntop             = kwargs.get('loss_ntop',             5000)
     # verbose                = kwargs.get('verbose',                0)
     # cols2drop              = kwargs.get('cols2drop',              [])
     # transform_method       = kwargs.get('transform:_method',      "label_encoder")
@@ -97,9 +97,14 @@ def ml_model_execution_quick_case(**kwargs):
     # maxcnt                 = kwargs.get('maxcnt',                 1)
     # activation_function    = kwargs.get('activation_function',    "tanh")
     
-    return model_execution(**kwargs)
+    return ml_model_execution(**kwargs)
 
-def model_execution(**kwargs):
+def ml_model_execution(**kwargs):
+
+    # TODO: Question:
+    #       The lstm_autoencoder requires to "bootstrap" the sequence with a set of lstm_steps
+    #       Are these lstm_steps first elements of predsdf considered for anomaly detection?
+    #       If there 
 
     verbose                = kwargs.get('verbose',                0)
     traindf                = kwargs.get('traindf',                None)
@@ -108,32 +113,48 @@ def model_execution(**kwargs):
     cols2drop              = kwargs.get('cols2drop',              [])
     model_type             = kwargs.get('model_type',             "simple_autoencoder")
     epochss                = kwargs.get('epochss',                [10])
-    ntop_anom              = kwargs.get('ntop_anom',               200)
+    ntop_anom              = kwargs.get('ntop_anom',              200)
     maxcnt                 = kwargs.get('maxcnt',                 1)
     # unused parameters
     # model_filename_root    = kwargs.get('model_filename_root',    None)
     # model_filename         = kwargs.get('model_filename',         None)
     evilqueryfield         = kwargs.get('evilqueryfield',         None)
-    # loops                  = kwargs.get('loops',                  1)
+    # fitloops               = kwargs.get('fitloops',               1)
     # batch_size             = kwargs.get('batch_size',             8)
-    # error_ntop             = kwargs.get('error_ntop',             None)
+    # loss_ntop             = kwargs.get('loss_ntop',             None)
     # autosave_minloss_model = kwargs.get('autosave_minloss_model', False)
 
     # Model-specific Arguments
-    lstm_time_steps        = kwargs.get('lstm_time_steps',        200)
+    lstm_timesteps        = kwargs.get('lstm_timesteps',        200)
 
     if d4.debug != 0:
         verbose = d4.debug
 
+    # Save original input DFs
+    trainorigdf = traindf
+    predinorigdf = predindf
+
     # Drop columns - During the Model Definition we can try dropping columns see if that improves our detection
     if traindf is not None:
+        if verbose:
+            print("INFO: Dropping requested columns from traindf:", end='')
+            print(cols2drop)
         traindf = traindf.drop(columns=cols2drop)
     if predindf   is not None:
-        predindf  = predindf.drop(columns=cols2drop)
+        if verbose:
+            print("INFO: Dropping requested columns from predindf:", end='')
+            print(cols2drop)
+        predindf = predindf.drop(columns=cols2drop)
+
+    # We will drop columns with no variance
+    # TODO: We will need to restore them at the end
+    for col in traindf.columns:
+        if len(traindf[col]) == 1 and len(predindf[col]) == 1:
+            print("WARNING: Dropping column " + col + " for ML process (no variance) from traindf/predindf.")
+            traindf = traindf.drop(columns=col)
+            predindf = predindf.drop(columns=col)
 
     for epochs in epochss:
-        display(Markdown("----"))
-        display(Markdown("**"+str(epochs)+" epochs**"))
         evilentryidxs = []
         cnt=1
 
@@ -147,29 +168,29 @@ def model_execution(**kwargs):
                 else:
                      anomdf, loss, lossft = ml_autoencoder(**kwargs, epochs=epochs)
 
-                # We need to shift the predindf by lstm_time_steps-1 
-                predinshifteddf = predindf.iloc[lstm_time_steps-1:]
-                predinshifteddf.index -= lstm_time_steps-1
+                     # Loss
+                     lossdf = pd.DataFrame(loss)
+                     lossdf.index = lossdf.index + lstm_timesteps - 1
 
-                if d4.debug >= 3:
-                    display(predinshifteddf.head(3))
-                    display(predinshifteddf.tail(3))
+                     # Per-Feature Loss
+                     lossftdfcols = pd.Series(predindf.columns)
+                     lossftdfcols = "Loss-" + pd.Series(predindf.columns)
+                     lossftdf = pd.DataFrame(lossft, columns=lossftdfcols)
+                     lossftdf.index = lossftdf.index + lstm_timesteps - 1
 
-                # Sort anomdf by loss
-                erroranomidx = list(pd.Series(pd.DataFrame(loss.sort_values(ascending=False)).reset_index()['index']).values)
-                anomsorteddf = predinshifteddf.loc[erroranomidx].reset_index().rename(columns={"index": "Orig_Index"})
-                if d4.debug >= 3:
-                    print("DEBUG: erroranomidx -> "+str(type(erroranomidx))+str(len(erroranomidx)))
-                    print("DEBUG: predinshifteddf -> "+str(type(predinshifteddf))+" -> "+str(predindf.iloc[lstm_time_steps-1:].shape))
-                    print("DEBUG: anomsorteddf -> "+str(type(anomsorteddf))+str(anomsorteddf.shape))
-                    display(anomsorteddf.head(3))
-                    display(anomsorteddf.tail(3))
+                     # Anomaly-Loss DF
+                     anomlossdf = anomdf.copy()
+                     anomlossdf['Loss_'] = lossdf
+                     anomlossdf = pd.concat([anomlossdf, lossftdf], axis=1)
+
             else:
                 anomdf, loss  = ml_autoencoder(**kwargs, epochs=epochs)
 
-                # Sort anomdf by loss
-                erroranomidx = list(pd.Series(pd.DataFrame(loss.sort_values(ascending=False)).reset_index()['index']).values)
-                anomsorteddf = predindf.loc[erroranomidx].reset_index().rename(columns={"index": "Orig_Index"})
+                # Loss
+                lossdf = pd.DataFrame(loss)
+
+                anomlossdf = anomdf.copy()
+                anomlossdf['Loss_'] = lossdf
 
             if d4.debug >= 3:
                 print("")
@@ -179,18 +200,14 @@ def model_execution(**kwargs):
                 print("DEBUG: ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
                 print("")
 
-
-            #erroranomidx = list(pd.Series(pd.DataFrame(loss.sort_values(ascending=False)).reset_index()['index']).values)
-            #anomsorteddf = predindf.loc[erroranomidx].reset_index().rename(columns={"index": "Orig_Index"})
-
             # Find & Print our evil entries
             if (evilqueryfield is not None) and (evilquerystring is not None):
                 query         = eval("evilqueryfield")+'.str.contains("'+evilquerystring+'")'
                 evilentriesdf = anomsorteddf.query(query, engine="python")
 
                 print("")
-                display(Markdown("**Evil Entries:**"))
-                display(evilentriesdf)
+                print("Evil Entries:")
+                print(evilentriesdf)
                 print("")
 
                 if evilentriesdf.shape[0] == 0:
@@ -200,7 +217,7 @@ def model_execution(**kwargs):
                     evilentryorigidx = evilentriesdf.head(1).index
 
                     if model_type == "lstm_autoencoder":
-                        # The LSTM model drops the first time_steps values from the data,
+                        # The LSTM model drops the first timesteps values from the data,
                         # so the index needs to be corrected
                         evilentrylstmidx = evilentryorigidx 
                         evilentryidx = anomsorteddf.query('index == @evilentrylstmidx').index.values[0]
@@ -210,7 +227,7 @@ def model_execution(**kwargs):
                     # Save in list (multiple cnt-runs)
                     evilentryidxs.append(evilentryidx)
 
-                    display(Markdown("**Best Evil Entry Error Order: "+str(evilentryidxs)+"**"))
+                    print("Best Evil Entry Error Order: "+str(evilentryidxs))
                     print("")
 
             # Print Top Anomalies
@@ -219,9 +236,9 @@ def model_execution(**kwargs):
 
             errortopanomidx = list(pd.Series(pd.DataFrame(loss.sort_values(ascending=False)).reset_index()['index'].head(ntop_anom)).values)
             if model_type == "lstm_autoencoder":
-                # The LSTM model drops the first time_steps values from the data,
+                # The LSTM model drops the first timesteps values from the data,
                 # so the index needs to be corrected
-                errortopanomidx = [x + lstm_time_steps - 1 for x in errortopanomidx]
+                errortopanomidx = [x + lstm_timesteps - 1 for x in errortopanomidx]
 
             if d4.debug >= 3:
                 print("DEBUG: [DBG"+str(d4.debug)+"] errortopanomidx: ", end='')
@@ -232,8 +249,10 @@ def model_execution(**kwargs):
 
             #anomdf = anomdf.loc[errortopanomidx].reset_index()
             if verbose >= 1:
-                display(Markdown("**TOP 10 ANOMALIES**"))
-                display(topanomdf.head(10))
+                print("TOP 10 ANOMALIES")
+                pd.set_option("max_columns", None)
+                pd.set_option('display.max_colwidth', None)
+                print(topanomdf.head(10))
 
             cnt += 1
 
@@ -241,12 +260,18 @@ def model_execution(**kwargs):
         # Convert np.array to DF - LSTM-specific
         lossftdf  = pd.DataFrame(lossft, columns=predindf.columns)
 
+        lossdict = {}
+        lossdict['loss'] = losssr
+        lossdict['lossft'] = lossftdf
+
         if d4.debug == 5:
             return predinarr, predoutarr, topanomdf, anomsorteddf, losssr, lossftdf
         else:
-            return topanomdf, anomsorteddf, losssr, lossftdf
+            #return topanomdf, anomsorteddf, lossdict
+            return anomlossdf
     else:
-        return topanomdf, anomsorteddf, losssr
+        #return topanomdf, anomsorteddf, losssr
+        return anomlossdf
 
 # ML MODELS ###################################################################
 
@@ -288,12 +313,12 @@ def ml_autoencoder(**kwargs):
 
     # FUNCTIONS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    def create_lstm_dataset_train(X, y, time_steps=1):
+    def create_lstm_dataset_train(X, y, timesteps=1):
         Xs, ys = [], []
-        for i in range(len(X) - time_steps):
-            v = X.iloc[i:(i + time_steps)].values
+        for i in range(len(X) - timesteps):
+            v = X.iloc[i:(i + timesteps)].values
             Xs.append(v)        
-            ys.append(y.iloc[i + time_steps])
+            ys.append(y.iloc[i + timesteps])
 
         if d4.debug >= 3:
             print("")
@@ -307,12 +332,11 @@ def ml_autoencoder(**kwargs):
         #return np.array(Xs), np.array(ys)
         return np.array(Xs)
 
-    def create_lstm_dataset_predict(X, time_steps=1):
+    def create_lstm_dataset_predict(X, timesteps=1):
         Xs = []
-        for i in range(len(X) - time_steps + 1):
-        #for i in range(0, len(X), time_steps):
-            v = X.iloc[i:(i + time_steps)].values
-            #print("XXXX: "+str(i)+" - "+str(v))
+        for i in range(len(X) - timesteps + 1):
+        #for i in range(0, len(X), timesteps):
+            v = X.iloc[i:(i + timesteps)].values
             Xs.append(v)        
         return np.array(Xs)
 
@@ -327,11 +351,12 @@ def ml_autoencoder(**kwargs):
         return(flattened_X)
 
     def prediction_data_preparation(predindf, transform_method, data_scaling_method, verbose):
-        print("- Transforming prediction columns ("+transform_method+")")
+        if verbose:
+            print("- Transforming prediction columns ("+transform_method+")")
 
         if verbose >= 1:
             print("\n[PRED] Before Transform:")
-            display(predindf.head(4))
+            print(predindf.head(4))
 
         # This mechanism transforms everything as categoricals
         if transform_method == "categorical_basic":
@@ -362,7 +387,7 @@ def ml_autoencoder(**kwargs):
         
         if verbose >= 1:
             print("[PRED] After Transform:")
-            display(predindf.head(4))
+            print(predindf.head(4))
             print("")
 
         # Scaling - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
@@ -372,7 +397,7 @@ def ml_autoencoder(**kwargs):
 
         if data_scaling_method != "none":
             if data_scaling_method == "normalize":
-                print("- Scaling Data -> Normalize")
+                if verbose: print("- Scaling Data -> Normalize")
                 scaler   = MinMaxScaler()
                 scaler   = scaler.fit(predinarr)
                 predinarr = scaler.transform(predinarr)
@@ -383,26 +408,26 @@ def ml_autoencoder(**kwargs):
             
             if verbose >= 1:
                 print("\n[PRED] After Scaling -> "+data_scaling_method)
-                display(pd.DataFrame(predinarr, columns=predindf.columns).head(4))
+                print(pd.DataFrame(predinarr, columns=predindf.columns).head(4))
 
         # LSTM  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
         if model_type == "lstm_autoencoder":
-            print("- [PRED] Creating 3D pred numpy array from predinarr (this can take a long time)...")
+            if verbose: print("- [PRED] Creating 3D pred numpy array from predinarr (this can take a long time)...")
             predinarr2d = predinarr
-            predinarr3d = create_lstm_dataset_predict(pd.DataFrame(predinarr2d), lstm_time_steps)
+            predinarr3d = create_lstm_dataset_predict(pd.DataFrame(predinarr2d), lstm_timesteps)
             predinarr   = predinarr3d
-            print("  + "+str(predinarr2d.shape)+" -> "+str(predinarr3d.shape))
+            if verbose: print("  + "+str(predinarr2d.shape)+" -> "+str(predinarr3d.shape))
             
         return predinarr, transform_dict, scaler
 
-    def train_data_preparation(traindf, transform_method, transform_dict, data_scaling_method, scaler, lstm_time_steps=None, verbose=0):
+    def train_data_preparation(traindf, transform_method, transform_dict, data_scaling_method, scaler, lstm_timesteps=None, verbose=0):
 
         # COMMON PREPARATION FOR ALL MODELS - - - - - - - - - - - - - - - - - - - - 
-        print("- [TRAIN] Transforming columns ("+transform_method+")")
+        if verbose: print("- [TRAIN] Transforming columns ("+transform_method+")")
 
         if verbose >= 1:
             print("\n[TRAIN] Before Transform:")
-            display(traindf.head(4))
+            print(traindf.head(4))
 
         if transform_method == "categorical_basic":
             traindf = traindf.replace(transform_dict)
@@ -416,7 +441,7 @@ def ml_autoencoder(**kwargs):
         
         if verbose >= 1:
             print("\n[TRAIN] After Transform:")
-            display(traindf.head(4))
+            print(traindf.head(4))
 
         # Scaling - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
         
@@ -424,7 +449,7 @@ def ml_autoencoder(**kwargs):
 
         if d4.debug >= 3:
             print("\n[TRAIN] After Transform (np.array):")
-            display(trainarr[:4])
+            print(trainarr[:4])
 
         if data_scaling_method != "none":
             if data_scaling_method == "normalize":
@@ -446,15 +471,15 @@ def ml_autoencoder(**kwargs):
 
             if verbose >= 1:
                 print("\n[TRAIN] After Scaling -> "+data_scaling_method)
-                display(pd.DataFrame(trainarr, columns=traindf.columns).head(4))
+                print(pd.DataFrame(trainarr, columns=traindf.columns).head(4))
 
         # Model-specific Data Preparation - - - - - - - - - - - - - - - - - - - - - 
         if model_type == "lstm_autoencoder":
-            print("- [TRAIN] Creating 3D pred numpy array from predinarr (this can take a long time)...")
+            if verbose: print("- [TRAIN] Creating 3D pred numpy array from predinarr (this can take a long time)...")
             trainarr2d = trainarr
-            trainarr3d = create_lstm_dataset_train(pd.DataFrame(trainarr2d), pd.DataFrame(trainarr2d), lstm_time_steps)
+            trainarr3d = create_lstm_dataset_train(pd.DataFrame(trainarr2d), pd.DataFrame(trainarr2d), lstm_timesteps)
             trainarr   = trainarr3d
-            print("  + "+str(trainarr2d.shape)+" -> "+str(trainarr3d.shape))
+            if verbose: print("  + "+str(trainarr2d.shape)+" -> "+str(trainarr3d.shape))
 
         return trainarr
 
@@ -479,19 +504,20 @@ def ml_autoencoder(**kwargs):
     activation_function    = kwargs.get('activation_function',    "relu")
     optimizer              = kwargs.get('optimizer',              None)
     loss                   = kwargs.get('loss',                   None)
-    lstm_time_steps        = kwargs.get('lstm_time_steps',        200)
+    lstm_timesteps        = kwargs.get('lstm_timesteps',        200)
     lstm_units             = kwargs.get('lstm_units',             50)
     # Model Training - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     epochs                 = kwargs.get('epochs',                 40)
     batch_size             = kwargs.get('batch_size',             32)
-    loops                  = kwargs.get('loops',                  1)
+    fitloops               = kwargs.get('fitloops',               1)
+    kerasverbose           = kwargs.get('kerasverbose',           1)
     # Model Saving - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     model_filename         = kwargs.get('model_filename',         None)
     model_filename_root    = kwargs.get('model_filename_root',    None)
     autosave_minloss_model = kwargs.get('autosave_minloss_model', False)
     # Predictions - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-    error_threshold        = kwargs.get('error_threshold',          None)
-    error_ntop             = kwargs.get('error_ntop',               None)
+    loss_threshold        = kwargs.get('loss_threshold',          None)
+    loss_ntop             = kwargs.get('loss_ntop',               None)
 
     # BODY ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -524,34 +550,35 @@ def ml_autoencoder(**kwargs):
         predindf_shape = None
 
     # INFO --------------------------------------------------------------------
-    print("- General:")
-    print("  + Verbosity:               "+str(verbose))
-    print("- Input Data:")       
-    print("  + Train DF:                "+str(traindf_shape))
-    print("  + Prediction DF:           "+str(predindf_shape))
-    print("- Data Preparation:")
-    print("  + Transform Method:        "+transform_method)
-    print("  + Data Scaling Method:     "+str(data_scaling_method))
-    print("- Model Parameters:")
-    print("  + Model Type:              "+model_type)
-    print("  + Encoding Dimension:      "+str(encoding_dim))
-    print("  + Activation Function:     "+str(activation_function))
-    # Model-specific Arguments
-    if model_type == "lstm_autoencoder":
-        print("  + lstm_units:              "+str(lstm_units))
-        print("  + lstm_time_steps:         "+str(lstm_time_steps))
-    print("- Training Parameters:") 
-    print("  + Training Loops:          "+str(loops))
-    print("  + epochs:                  "+str(epochs))
-    print("  + batch_size:              "+str(batch_size))
-    print("- Model Saving:")         
-    print("  + autosave_minloss_model:  "+str(autosave_minloss_model))
-    print("  + model_filename:          "+str(model_filename))
-    print("  + model_filename_root:     "+str(model_filename_root))
-    print("- Predictions:")        
-    print("  + error_threshold:         "+str(error_threshold))
-    print("  + error_ntop:              "+str(error_ntop))
-    print("")
+    if verbose:
+        print("- General:")
+        print("  + Verbosity:               "+str(verbose))
+        print("- Input Data:")       
+        print("  + Train DF:                "+str(traindf_shape))
+        print("  + Prediction DF:           "+str(predindf_shape))
+        print("- Data Preparation:")
+        print("  + Transform Method:        "+transform_method)
+        print("  + Data Scaling Method:     "+str(data_scaling_method))
+        print("- Model Parameters:")
+        print("  + Model Type:              "+model_type)
+        print("  + Encoding Dimension:      "+str(encoding_dim))
+        print("  + Activation Function:     "+str(activation_function))
+        # Model-specific Arguments
+        if model_type == "lstm_autoencoder":
+            print("  + lstm_units:              "+str(lstm_units))
+            print("  + lstm_timesteps:         "+str(lstm_timesteps))
+        print("- Training Parameters:") 
+        print("  + Training Loops:          "+str(fitloops))
+        print("  + epochs:                  "+str(epochs))
+        print("  + batch_size:              "+str(batch_size))
+        print("- Model Saving:")         
+        print("  + autosave_minloss_model:  "+str(autosave_minloss_model))
+        print("  + model_filename:          "+str(model_filename))
+        print("  + model_filename_root:     "+str(model_filename_root))
+        print("- Predictions:")        
+        print("  + loss_threshold:         "+str(loss_threshold))
+        print("  + loss_ntop:              "+str(loss_ntop))
+        print("")
 
     # INITIALIZATION ----------------------------------------------------------
     np.random.seed(8)
@@ -569,22 +596,21 @@ def ml_autoencoder(**kwargs):
   
     # DATA SUBSETS  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     if model_type == "lstm_autoencoder":
-        predinoriglstmdf = predinorigdf.iloc[lstm_time_steps-1:]
+        predinoriglstmdf = predinorigdf.iloc[lstm_timesteps-1:]
 
     # PREDICTION  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     predinarr, transform_dict, scaler = prediction_data_preparation(predindf, transform_method, data_scaling_method, verbose)
-    #print("XXXX: "+str(predinarr.shape))
-
 
     # CREATING THE NEURAL NETWORK ARCHITECTURE --------------------------------
     # Load model, if model file exists
     if model_filename is not None and os.path.exists(model_filename):
-            model_loaded_from_file = True
-
+        model_loaded_from_file = True
+        if verbose:
             print("- Loading Model from:")
-            print("    "+model_filename)
-            autoencoder = load_model(model_filename)
+            print("    " + model_filename)
+        autoencoder = load_model(model_filename)
 
+        if verbose:
             print("")
             print("Autoencoder Summary:")
             print("")
@@ -593,7 +619,7 @@ def ml_autoencoder(**kwargs):
 
     else:
         # TRAIN - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-        trainarr = train_data_preparation(traindf, transform_method, transform_dict, data_scaling_method, scaler, lstm_time_steps, verbose)
+        trainarr = train_data_preparation(traindf, transform_method, transform_dict, data_scaling_method, scaler, lstm_timesteps, verbose)
 
         model_loaded_from_file = False
 
@@ -609,13 +635,14 @@ def ml_autoencoder(**kwargs):
         mdlnames = []
         losses   = []
         tlcnt    = 1
-        while tlcnt <= loops:
-            print("")
-            print("[LOOP ITERATION: "+str(tlcnt)+"/"+str(loops)+"]")
-            print("")
+        while tlcnt <= fitloops:
+            if verbose:
+                print("")
+                print("[LOOP ITERATION: "+str(tlcnt)+"/"+str(fitloops)+"]")
+                print("")
 
-            print("MODEL CREATION")
-            print("")
+                print("MODEL CREATION")
+                print("")
 
 
             # We create an encoder and decoder. 
@@ -625,14 +652,14 @@ def ml_autoencoder(**kwargs):
             if model_type == "simple_autoencoder":
                 input_dim    = nfeatures
                 hidden_dim   = encoding_dim
-
-                print("- Creating Model")
-                print("  + No. Features:          "+str(nfeatures))
-                print("  + Input Array Dimension: "+str(input_dim))
-                print("")
+                if verbose:
+                    print("- Creating Model")
+                    print("  + No. Features:          "+str(nfeatures))
+                    print("  + Input Array Dimension: "+str(input_dim))
+                    print("")
 
                 input_layer = Input(shape=(input_dim,))
-                print(input_layer)
+                if verbose: print(input_layer)
                 encoded     = Dense(encoding_dim, activation='relu'  )(input_layer)
                 decoded     = Dense(input_dim,    activation='linear')(encoded)
 
@@ -644,11 +671,12 @@ def ml_autoencoder(**kwargs):
             elif model_type == "multilayer_autoencoder":
                 input_dim    = nfeatures
                 hidden_dim   = encoding_dim
-
-                print("- Creating Model")
-                print("  + No. Features:    "+str(nfeatures))
-                print("  + Input Array Dimension: "+str(input_dim))
-                print("")
+                
+                if verbose:
+                    print("- Creating Model")
+                    print("  + No. Features:    "+str(nfeatures))
+                    print("  + Input Array Dimension: "+str(input_dim))
+                    print("")
 
                 input_layer = Input(shape=(input_dim,))
                 encoded     = Dense(encoding_dim, activation="relu"  )(input_layer)
@@ -665,11 +693,11 @@ def ml_autoencoder(**kwargs):
             elif model_type == "lstm_autoencoder":
                 # Refs: - https://towardsdatascience.com/lstm-autoencoder-for-extreme-rare-event-classification-in-keras-ce209a224cfb
                 #       - https://curiousily.com/posts/anomaly-detection-in-time-series-with-lstms-using-keras-in-python/
-
-                print("- Creating Model")
-                print("  + No. Features:          "+str(nfeatures))
-                print("  + Input Array Dimension: "+str(trainarr.shape))
-                print("")
+                if verbose:
+                    print("- Creating Model")
+                    print("  + No. Features:          "+str(nfeatures))
+                    print("  + Input Array Dimension: "+str(trainarr.shape))
+                    print("")
 
                 # SINGLE LAYER - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                 # https://machinelearningmastery.com/how-to-develop-lstm-models-for-time-series-forecasting/
@@ -681,12 +709,12 @@ def ml_autoencoder(**kwargs):
                 autoencoder = Sequential()
 
                 if use_gpu :
-                    autoencoder.add(LSTM(lstm_units, activation=activation_function, input_shape=(lstm_time_steps, nfeatures),
+                    autoencoder.add(LSTM(lstm_units, activation=activation_function, input_shape=(lstm_timesteps, nfeatures),
                                          recurrent_activation="sigmoid", recurrent_dropout=0.0, unroll=False, use_bias=True))
                 else:
-                    autoencoder.add(LSTM(lstm_units, activation=activation_function, input_shape=(lstm_time_steps, nfeatures)))
+                    autoencoder.add(LSTM(lstm_units, activation=activation_function, input_shape=(lstm_timesteps, nfeatures)))
                     
-                autoencoder.add(RepeatVector(n=lstm_time_steps))
+                autoencoder.add(RepeatVector(n=lstm_timesteps))
                 autoencoder.add(LSTM(lstm_units, return_sequences=True))
                 autoencoder.add(TimeDistributed(Dense(nfeatures)))
 
@@ -726,8 +754,9 @@ def ml_autoencoder(**kwargs):
             # The reconstruction is a linear process and is defined in the decoder using the linear activation function.
             # The loss is defined as mse, which is mean squared error
 
-            print("- Compiling Model")
-            print("")
+            if verbose:
+                print("- Compiling Model")
+                print("")
             autoencoder.compile(optimizer=optimizer, loss=loss)
             modelname = autoencoder.name
 
@@ -736,44 +765,50 @@ def ml_autoencoder(**kwargs):
             # Save autoencoder model to dict
             models[modelname] = autoencoder
 
-            display(Markdown("**Autoencoder Summary:**"))
-            print("")
-            autoencoder.summary()
-            print("")
+            
+            if verbose:
+                print("Autoencoder Summary:*")
+                print("")
+                autoencoder.summary()
+                print("")
 
             # TRAINING THE NETWORK --------------------------------
-            print("TRAINING")
-            print("")
-            print("- Training Info:")
-            print("  + epochs     = "+str(epochs))
-            print("  + batch_size = "+str(batch_size))
-            print("")
+            if verbose:
+                print("TRAINING")
+                print("")
+                print("- Training Info:")
+                print("  + epochs     = "+str(epochs))
+                print("  + batch_size = "+str(batch_size))
+                print("")
 
             
             now = datetime.datetime.now()
-            print("- Training Start: "+str(now.strftime("%Y-%m-%d %H:%M:%S")))
-            print("")
+            if verbose:
+                print("- Training Start: "+str(now.strftime("%Y-%m-%d %H:%M:%S")))
+                print("")
 
-            losshist = autoencoder.fit(trainarr, trainarr, epochs=epochs, batch_size=batch_size)
+            losshist = autoencoder.fit(trainarr, trainarr, epochs=epochs, batch_size=batch_size, verbose=kerasverbose)
             losses.append(losshist.history['loss'][-1])
             tlcnt += 1
 
             now = datetime.datetime.now()
-            print("")
-            print("- Training End:   "+str(now.strftime("%Y-%m-%d %H:%M:%S")))
-            print("")
+            if verbose:
+                print("")
+                print("- Training End:   "+str(now.strftime("%Y-%m-%d %H:%M:%S")))
+                print("")
 
         minloss        = min(losses)
         minlossidx     = losses.index(minloss)
         minlossmdlname = mdlnames[minlossidx]
         minlossmodel   = models[minlossmdlname]
 
-        print("")
-        print("- Models:          "+str(mdlnames))
-        print("- Losses:          "+str(losses))
-        print("- Min. Loss:       "+str(minloss))
-        print("- Min. Loss Model: "+str(minlossmdlname))
-        print("")
+        if verbose:
+            print("")
+            print("- Models:          "+str(mdlnames))
+            print("- Losses:          "+str(losses))
+            print("- Min. Loss:       "+str(minloss))
+            print("- Min. Loss Model: "+str(minlossmdlname))
+            print("")
     
         # Save model, if model file does not exist
         if autosave_minloss_model:
@@ -803,23 +838,24 @@ def ml_autoencoder(**kwargs):
     # Once the model is fitted, we predict the input values by passing the same X_train dataset to the autoencoder's predict method.
     # Next, we calculate the mse values to know whether the autoencoder was able to reconstruct the dataset correctly and how much the reconstruction error was:
 
-    print("PREDICTIONS")
-    print("")
+    if verbose:
+        print("PREDICTIONS")
+        print("")
 
     # RUN MODEL ---------------------------------------------------------------
     if not model_loaded_from_file:
         # Set autoencoder model to the one with minimal loss
-        print("- Setting autoencoder to min loss model: "+minlossmdlname)
+        if verbose: print("- Setting autoencoder to min loss model: "+minlossmdlname)
         autoencoder = minlossmodel
         
-    print("- Input DF Shape: "+str(predindf.shape)+" -> "+str(predinarr.shape))
+    if verbose: print("- Input DF Shape: "+str(predindf.shape)+" -> "+str(predinarr.shape))
 
-    print("- Running predictions...")
+    if verbose: print("- Running predictions...")
     now = datetime.datetime.now()
-    print("  + Start: "+str(now.strftime("%Y-%m-%d %H:%M:%S")))
+    if verbose: print("  + Start: "+str(now.strftime("%Y-%m-%d %H:%M:%S")))
     predoutarr = autoencoder.predict(predinarr)
     now = datetime.datetime.now()
-    print("  + End:   "+str(now.strftime("%Y-%m-%d %H:%M:%S")))
+    if verbose: print("  + End:   "+str(now.strftime("%Y-%m-%d %H:%M:%S")))
 
     # Calculate Loss  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
     if   model_type == "simple_autoencoder":
@@ -838,7 +874,7 @@ def ml_autoencoder(**kwargs):
 
         loss      = loss_full
 
-        predinfindf = predindf.iloc[lstm_time_steps:]
+        predinfindf = predindf.iloc[lstm_timesteps:]
 
         if d4.debug >= 3:
             print("")
@@ -852,56 +888,53 @@ def ml_autoencoder(**kwargs):
             print("DEBUG: - loss :           "+str(loss.shape))
             print("")
 
-    plt.plot(loss)
-
     # OBTAIN ANOMALIES --------------------------------------------------------
 
-#test_score_df = pd.DataFrame(index=test[TIME_STEPS:].index)
-#test_score_df['loss'] = test_mae_loss
-
-    # Auto-calculate error_threshold - Top N values
-    if error_threshold is None:
-        if error_ntop is None:
-            ntoperror = 15
+    # Auto-calculate loss_threshold - Top N values
+    if loss_threshold is None:
+        if loss_ntop is None:
+            ntoploss = 15
         else:
             # Ensure that the number of error rows specified are <= DF rows
-            if error_ntop >= predinfindf.shape[0]:
-                ntoperror = predinfindf.shape[0]
+            if loss_ntop >= predinfindf.shape[0]:
+                ntoploss = predinfindf.shape[0]
             else:
-                ntoperror = error_ntop
+                ntoploss = loss_ntop
 
-        error_threshold = int(np.sort(loss)[-ntoperror])
-        autocalcmsg = " (Auto-calculated - Top "+str(ntoperror)+")"
+        loss_threshold = int(np.sort(loss)[-ntoploss])
+        autocalcmsg = " (Auto-calculated - Top "+str(ntoploss)+")"
     else:
         autocalcmsg = ""
 
-    print("- Error Threshold: "+str(error_threshold)+autocalcmsg)
+    if verbose:
+        print("- Error Threshold: "+str(loss_threshold)+autocalcmsg)
 
 
-    # Select entries above the error threshold
+    # Select entries above the loss threshold
     # Instead of using predoutdf we will use predinfindf, which has been adapted
     # to be the same dimension as predoutdf and is good enough to identify the
     # anomalous entries as predoutdf, since they both have corresponding entries
     # (original vs predicted) in a 1-to-1 way
     if   model_type == "simple_autoencoder":
-        anomdf = predinorigdf[loss >= error_threshold]
+        anomdf = predinorigdf[loss >= loss_threshold]
     elif model_type == "multilayer_autoencoder":
-        anomdf = predinorigdf[loss >= error_threshold]
+        anomdf = predinorigdf[loss >= loss_threshold]
     elif model_type == "lstm_autoencoder":
-        anomdf = predinoriglstmdf[loss >= error_threshold]
+        anomdf = predinoriglstmdf[loss >= loss_threshold]
 
     if d4.debug >= 3:
         print("")
         print("DEBUG: [DBG"+str(d4.debug)+"] ["+str(os.path.basename(__file__))+"] ["+str(inspect.currentframe().f_code.co_name)+"()]")
         print("DEBUG: anomdf shape: "+str(anomdf.shape))
         print("DEBUG: anomdf dtype & head: vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
-        display(anomdf.dtypes)
-        display(anomdf.head(4))
+        print(anomdf.dtypes)
+        print(anomdf.head(4))
         print("DEBUG: ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
         print("")
 
-    print("- No.Anomalies: "+str(len(anomdf)))
-    print("- RUN ID:       "+str(runid))
+    if verbose:
+        print("- No.Anomalies: "+str(len(anomdf)))
+        print("- RUN ID:       "+str(runid))
 
     # RETURN ------------------------------------------------------------------
     losssr = pd.Series(loss)

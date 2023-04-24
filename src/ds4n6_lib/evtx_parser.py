@@ -136,6 +136,80 @@ def run_tool(path,verbose=True, **kwargs):
     
     return dfs
 
+def read_evtx_file_fast(evtxf, verbose=False, **kwargs):
+    # This function requires the evtx_dump executable 
+    # https://github.com/omerbenamram/evtx
+
+    import re
+    import os
+    import subprocess
+    from evtx import PyEvtxParser
+
+    orchestrator = kwargs.get('orchestrator', None)
+    tool         = kwargs.get('tool',         None)
+    plugin       = kwargs.get('plugin',       None)
+    hostname     = kwargs.get('hostname',     None)
+
+    evtxfbase = re.sub('^.*\\\\', '', evtxf)
+    print("- Processing: " + evtxfbase)
+
+    print('- Executing evtx_dump')
+    result = subprocess.run(['evtx_dump', evtxf], stdout=subprocess.PIPE)
+    xmlstr = result.stdout.decode('ascii')
+    xmlstr = re.sub('^Record .*','',xmlstr)
+    xmlstr = re.sub('.*xml\ version.*','',xmlstr)
+    xmlstr = '<Events>' + xmlstr + '</Events>'
+    xmlstr = '<?xml version="1.1" encoding="utf-8" standalone="yes" ?>' + xmlstr
+
+    # print("- Fixing xml via BeautifulSoup")
+    # from bs4 import BeautifulSoup
+    # xmlstr = BeautifulSoup(xmlstr, 'xml')
+    # print("  + xmlstr type: ",end='')
+    # print(type(xmlstr))
+
+    #     # Read & Print file size
+    #     fsize = os.path.getsize(evtxf)
+    #     if verbose :
+    #         print("- Size: "+str(fsize))
+
+    # Convert from XML to DF
+    convertmethod = 2
+
+    print('- Converting XML to DF')
+
+    if convertmethod == 1:
+        # TODO: FIX: This should be much faster but doesn't work
+        print("- Fixing XML with lxml")
+        from lxml import etree
+        root = etree.fromstring(xmlstr.encode('utf-8'))
+        xmlstrfixed = etree.tostring(root)
+
+        print("- Converting XML to DF with pd.read_xml")
+        #from io import StringIO
+        #df = pd.read_xml(StringIO(xmlstr))
+        df = pd.read_xml(xmlstr)
+    else:
+        df = d4utl.xml_to_df(xmlstr,sep=" > ").d4evtx.column_types_set()
+
+    datatype     = "evtx-raw"
+    # Insert Tool / Data related HAM Columns
+    if not 'D4_Hostname_' in df.columns:
+        df.insert(0, 'D4_Hostname_', hostname)
+    if not 'D4_Plugin_' in df.columns:
+        df.insert(0, 'D4_Plugin_', plugin)
+    if not 'D4_Tool_' in df.columns:
+        df.insert(0, 'D4_Tool_', tool)
+    if not 'D4_Orchestrator_' in df.columns:
+        df.insert(0, 'D4_Orchestrator_', orchestrator)
+    if not 'D4_DataType_' in df.columns:
+        df.insert(0, 'D4_DataType_', datatype)
+
+    if not 'evtxFileName_' in df.columns:
+        df.insert(0, 'evtxFileName_', evtxfbase)
+
+    dfs = d4evtx.evtid_dfs_build(df)
+
+    return dfs
 
 def read_evtx_file(evtxf, verbose=False, **kwargs):
     """ Read evtx file.

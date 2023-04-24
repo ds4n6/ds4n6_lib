@@ -285,7 +285,11 @@ def escapeInvalidXML(string):
 
     def replacer(m):
         return "<u>\\u"+('%04X' % ord(m.group(0)))+"</u>"
-    return re.sub(r,replacer,string)
+  
+    try:
+        return re.sub(r,replacer,string)
+    except:
+        return string
 
 # df HELPERS ##################################################################
 def collapse_constant_columns(df):

@@ -51,6 +51,7 @@ import ds4n6_lib.mactime     as d4_mactime
 import ds4n6_lib.plaso       as d4_plaso
 import ds4n6_lib.volatility  as d4_volatility
 import ds4n6_lib.tshark      as d4_tshark
+import ds4n6_lib.sabonis     as d4_sabonis
 
 ###############################################################################
 # FUNCTIONS
@@ -189,6 +190,8 @@ def xread(**kwargs):
         print("")
     else:
         f2read = ""
+    
+    # TODO: possible bug when using relative paths in xread
 
     func2exec = 'd4_'+tool+'.read_data'
 
@@ -479,7 +482,8 @@ class dfs_explorer():
                 display(Markdown("<span style=\"color:red\">*DF unavailable to show in aggrid, please use default or qgrid*</span>"))
                 return
         elif self.grid_type == 'qgrid':
-            self.current_df.insert(0,'Selected', False)
+            if not 'Selected' in self.current_df.columns:
+                self.current_df.insert(0,'Selected', False)
             # qgrid filter issue
             for col in self.current_df.columns:
                 if is_string_dtype(self.current_df[col]):
