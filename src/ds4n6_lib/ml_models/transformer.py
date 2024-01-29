@@ -74,6 +74,13 @@ class Seq2seqData:
         strip_chars = strip_chars.replace("[", "")
         strip_chars = strip_chars.replace("]", "")
         strip_chars = strip_chars.replace("-", "")
+        strip_chars = strip_chars.replace("_", "")
+        strip_chars = strip_chars.replace(".", "")
+        strip_chars = strip_chars.replace(":", "")
+        strip_chars = strip_chars.replace("&", "")
+        strip_chars = strip_chars.replace("/", "")
+        strip_chars = strip_chars.replace("\\", "")
+        strip_chars = strip_chars.replace("@", "")
         lowercase = tf.strings.lower(input_string)
         return tf.strings.regex_replace(lowercase, "[%s]" % re.escape(strip_chars), "")
     

@@ -17,46 +17,49 @@ from collections import Counter
 #############################################################################################
 # FUNCTIONS
 #############################################################################################
-def build_lm_dataset(dset, mode='hostname', path=''): # mode: [hostname, ip_addr]
-    """ Function to build a lateral movement (LM) dataset
-    Syntax: build_lm_dataset(dset="<dset>", mode="<mode>", path="<path>")
+def build_lm_dataset(dset, mode='hostname', path='', codify=False):
+    """ Function to build a Lateral Movement (LM) dataset
+    Syntax: build_lm_dataset(dset="<dset>", mode="<mode>", path="<path>", codify="<codify>")
     Args:
-        dset (pandas.core.frame.DataFrame): path of the csv file to read. Min. columns: ['time','event_id','source_name','host_ip','source_hostname','logon_type','remote_user']
-        mode (str): build mode. 'hostname' to create LM dataset only by using known hostnames. 'ip_addr' to use IP addres for unknown hostnames
-        path (str): path to store lateral movement datasets
-            - ds4n6_lm_dataset.csv: dataset with lateral movements
-            - ds4n6_neo4j_dataset.csv: dataset with lateral movements to be loaded in Neo4j
+        dset (pandas.core.frame.DataFrame): Event Log Dataset. Min. columns: ['time','event_id','hostname','source_ip','source_hostname','logon_type','remote_user']
+            - Compatible with the following ds4n6 harmonized datasets: (Sabonis)
+        mode (str): build mode. 'hostname' to create the LM dataset only by using known hostnames. 'ip_addr' to use IP address for unknown hostnames
+        path (str): path to store the LM datasets
+            - ds4n6_lm_dataset.csv: dataset with LMs
+            - ds4n6_neo4j_dataset.csv: dataset with LMs to be loaded in Neo4j
+        codify (bool): 'True' to codify users and hostnames. 'False' otherwise. Default 'False'
     Returns:
-        lm_dset (core.frame.DataFrame): dataset with lateral movements
+        lm_dset (core.frame.DataFrame): dataset with LMs
     """
     dset    = _clear_dataset(dset)
     dict_ip = _create_ip_dict(dset)
     dset    = _ip_to_hostname(dset, dict_ip, mode=mode)
-    cdset   = _codify_dataset(dset)  
-    lm_dset = _build_lm_dataset(cdset[0])
+    if codify:     
+        cdset = _codify_dataset(dset)
+        dset  = cdset[0]
+        with open('dictionary.txt','w') as data: 
+            data.write(str(cdset[1]))
+            data.write(str(cdset[2]))
+    lm_dset = _build_lm_dataset(dset)
     lm_neo  = _build_neo_dataset(lm_dset)
     
     lm_dset.to_csv(path + 'ds4n6_lm_dataset.csv', index=False)
     lm_neo.to_csv(path + 'ds4n6_neo4j_dataset.csv', index=False)
-    
-    with open('dictionary.txt','w') as data: 
-        data.write(str(cdset[1]))
-        data.write(str(cdset[2]))
     return lm_dset
 
 def find_lm_anomalies(lm_dset, model, from_date, to_date, top_n=50, neo4j=True, path=''):
-    """ Function to detect anomalous lateral movement with machine learning
+    """ Function to detect anomalous Lateral Movement (LM) with Machine Learning
     Syntax: find_lm_anomalies(lm_dset="<lm_dset>", model="<model>", from_date="<from_date>", to_date="<to_date>", top_n="<top_n>", neo4j="<neo4j>", path="<path>")
     Args:
-        lm_dset (pandas.core.frame.DataFrame): path of the csv file to read
-        model (str): ML algorithm to be used. Supported models: ('s2s_lstm', 'transformer')
-        from_date (str): init date of training dataset
-        to_date (str): end date of training dataset
-        top_n (str): number of anomalous lateral movement to be detected
+        lm_dset (pandas.core.frame.DataFrame): Lateral Movement dataset (output of build_lm_dataset() func.)
+        model (str): ML model to be used. Supported models: ('s2s_lstm', 'transformer')
+        from_date (str): init date of the training dataset
+        to_date (str): end date of the training dataset
+        top_n (str): number of anomalous LMs to be detected
         neo4j (bool): 'True' to export the output to Neo4j format. 'False' otherwise
         path (str): path to store Neo4j output datasets
-            - <user>.csv: dataset with anomalous lateral movements by user
-            - <user>_full.csv: dataset with all user activity in the input dataset
+            - <user>.csv: dataset with anomalous LMs by user
+            - <user>_full.csv: dataset with all user activity in the input dataset (lm_dset)
     """
     if model == "transformer":
         from ds4n6_lib.ml_models.transformer import Seq2seqData, Autoencoder
@@ -64,9 +67,9 @@ def find_lm_anomalies(lm_dset, model, from_date, to_date, top_n=50, neo4j=True, 
         from ds4n6_lib.ml_models.seq2seq_lstm import Seq2seqData, Autoencoder
     else:
         raise ValueError("Error: model '" + model + "' not supported.")
-        
+    
     data = Seq2seqData()
-    ml_dset = data.load_path_dataset(lm_dset, from_date, to_date, min_count=16)
+    ml_dset = data.load_path_dataset(lm_dset, from_date, to_date, min_count=8)
     train_x, train_y = data.process_train_data(ml_dset)
     data.build_train_dset(train_x, train_y)
     
@@ -138,14 +141,23 @@ def _build_path_df(adjacency_df):
 
 def _clear_dataset(dataframe):
     df=dataframe.astype(str)
-    df['time'] = df['time'].str[0:19]
+    if 'D4_DataType_' in df.columns:
+        if df['D4_DataType_'][0]=='sabonis':
+            df = df.rename(columns={'Timestamp_': 'time',
+                                     'EventID_': 'event_id',
+                                     'ComputerName_':'hostname',
+                                     'SourceIP_':'source_ip',
+                                     'SourceComputer_':'source_hostname',
+                                     'LogonType_':'logon_type',
+                                     'TargetUserName_':'remote_user'})
+            df = df[['time','event_id','hostname','source_ip','source_hostname','logon_type','remote_user']]
+        else:
+            raise TypeError('D4_DataType_ != sabonis')
+
     df['time'] = pd.to_datetime(df['time'], format='%Y-%m-%d %H:%M:%S', utc=True)
-    
     df.drop(df[df['event_id'] != '4624'].index, inplace = True)
     df = df[~df['remote_user'].str.contains('$', regex = False)]
     df = df[~df['remote_user'].str.contains('anonymous', regex = False)]
-    df['hostname'] = df['hostname'].str.split('.', 1, expand = True)
-    
     target_columns = ['hostname', 'source_hostname', 'remote_user']
     for column in target_columns:
         df[column] = df[column].str.lower()
@@ -153,8 +165,8 @@ def _clear_dataset(dataframe):
     return df
 
 def _create_ip_dict(dataframe):
-    dict_df = dataframe[dataframe['logon_type'].str.contains('3.0', regex = False)]
-    dict_df = dict_df[~dict_df['source_hostname'].isin(['-','nan','none'])]
+    dict_df = dataframe[dataframe['logon_type'].str.contains('3', regex = False)]
+    dict_df = dict_df[~dict_df['source_hostname'].isin(['-','nan','none','d4_null'])]
     host_list=dict_df["source_hostname"].value_counts()
 
     host_dict = {}
@@ -247,7 +259,7 @@ def _print_top_anomalies(top_n, error_matrix, ml_dset):
         if cnt > top_n:
             break
         else:
-            print(str(cnt), ") Error="+str(1-anomalies[1]))
+            print(str(cnt), ") Error="+f'{(1-anomalies[1]):.0%}')
             print("Date:", ml_dset['time'].iloc[int(anomalies[0])])
             print("User:", ml_dset['user'].iloc[int(anomalies[0])])
             print("Lateral Movement:", ml_dset['path'].iloc[int(anomalies[0])])

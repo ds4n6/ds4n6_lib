@@ -12,6 +12,7 @@
 import re, string, os, time
 import pandas as pd
 import numpy as np
+from ast import literal_eval
 from gensim.models import Word2Vec
 from tensorflow import keras
 from tensorflow.keras import layers
@@ -33,6 +34,10 @@ class Seq2seqData:
         self.train_dset = 0
 
     def load_path_dataset(self, lm_dset, from_date, to_date, min_count):
+        if type(lm_dset) == str:
+            lm_dset = pd.read_csv(lm_dset)
+            lm_dset = lm_dset.astype(str)
+            lm_dset['path'] = lm_dset['path'].apply(literal_eval)
         lm_dset['time'] = pd.to_datetime(lm_dset['time'], format='%Y-%m-%d')
         lm_dset = lm_dset[(lm_dset['time'] >= from_date) & (lm_dset['time'] <= to_date)]
         model = Word2Vec(list(lm_dset['path']), vector_size=0, min_count=min_count)
@@ -70,6 +75,13 @@ class Seq2seqData:
         strip_chars = strip_chars.replace("[", "")
         strip_chars = strip_chars.replace("]", "")
         strip_chars = strip_chars.replace("-", "")
+        strip_chars = strip_chars.replace("_", "")
+        strip_chars = strip_chars.replace(".", "")
+        strip_chars = strip_chars.replace(":", "")
+        strip_chars = strip_chars.replace("&", "")
+        strip_chars = strip_chars.replace("/", "")
+        strip_chars = strip_chars.replace("\\", "")
+        strip_chars = strip_chars.replace("@", "")
         lowercase = tf.strings.lower(input_string)
         return tf.strings.regex_replace(lowercase, "[%s]" % re.escape(strip_chars), "")
     

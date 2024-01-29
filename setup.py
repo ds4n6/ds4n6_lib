@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="ds4n6_lib",
-    version="0.8.1",
+    version="0.8.2",
     author="Jess Garcia",
     author_email="ds4n6@one-esecurity.com",
     description="Bringing Data Science & Artificial Intelligence to the fingertips of the average Forensicator, and promote advances in the field",
