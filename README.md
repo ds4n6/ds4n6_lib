@@ -63,7 +63,7 @@ The installation can be easily done through pip.
 #### pip installation
 
 ```sh
-    pip install python-evtx Evtx ipyaggrid IPython ipywidgets keras matplotlib nbformat numpy pandas pyparsing qgrid ruamel.yaml sklearn tensorflow tqdm traitlets xmltodict ds4n6-lib
+    pip install -r requirements.txt
 ```
 
 Finally, import in your python3 program or Jupyter Notebook as "ds".
@@ -86,7 +86,7 @@ All you will need to do is to clone the library, install the test, create a virt
     
     git clone https://github.com/ds4n6/ds4n6_lib    
 
-    virtualenv -p python3.7 .test
+    virtualenv -p python3.10 .test
     source .test/bin/activate
     
     pip install -r requirements.txt 

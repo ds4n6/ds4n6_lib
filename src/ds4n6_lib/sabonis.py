@@ -200,8 +200,10 @@ def harmonize(df, **kwargs):
     # source_artifact	-> evtxFileName_
 
     # TODO: Verify if timezone can be different than utc and what happens then 
-    print("    - Lowercasing: ", end='' )
-    for field in ['hostname', 'user', 'source_hostname', 'remote_user', 'remote_domain', 'source_artifact']:
+    print("    - Lowercasing: ", end='')
+    str_fields = ['hostname', 'user', 'source_hostname', 'remote_user', 'remote_domain', 'source_artifact']
+    df[str_fields] = df[str_fields].fillna('d4_null')  # New (solve error or all samples in a column==Null)
+    for field in str_fields:
         print(field + " ", end='')
         df[field] = df[field].str.lower()
     print('')
@@ -229,21 +231,21 @@ def harmonize(df, **kwargs):
 
     # Computer_
     print("Computer_ ", end='')
-    df['Computer_'] = df['Computer_'].str.replace('^\\\\','')
+    df['Computer_'] = df['Computer_'].str.replace('^\\\\','',regex=True)
 
     # ComputerName_ (derived from Computer)
     print("ComputerName_ ", end='')
     df.insert(8,'ComputerName_',df['Computer_'])
     df['ComputerName_'] = np.where(df['Computer_'].str.match("[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*"), "d4_null", df['Computer_'])
-    df['ComputerName_'] = df['ComputerName_'].str.replace("\..*$","")
+    df['ComputerName_'] = df['ComputerName_'].str.replace("\..*$","",regex=True)
     df['ComputerName_'] = df['ComputerName_'].astype('string')
 
     # ComputerDomain_ (derived from Computer)
     print("ComputerDomain_ ", end='')
     df.insert(9,'ComputerDomain_',df['Computer_'])
     df['ComputerDomain_'] = np.where(df['ComputerDomain_'].str.match("[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*"), "d4_null", df['ComputerDomain_'])
-    df['ComputerDomain_'] = df['ComputerDomain_'].str.replace("^[^\.]*\.","")
-    df['ComputerDomain_'] = df['ComputerDomain_'].str.replace("^[^\.]*$","d4_null")
+    df['ComputerDomain_'] = df['ComputerDomain_'].str.replace("^[^\.]*\.","",regex=True)
+    df['ComputerDomain_'] = df['ComputerDomain_'].str.replace("^[^\.]*$","d4_null",regex=True)
     df['ComputerDomain_'] = df['ComputerDomain_'].astype('string')
 
     # ComputerIP_ (derived from Computer)
@@ -255,7 +257,7 @@ def harmonize(df, **kwargs):
     # user -> UserID_ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
     # Some entries are empty -> Replace by d4_null
-    df['UserID_'] = df['UserID_'].str.replace("^\ *$","d4_null")
+    df['UserID_'] = df['UserID_'].str.replace("^\ *$","d4_null",regex=True)
 
     # source_ip -> SourceIP_  - - - - - - - - - - - - - - - - - - - - - - - - - 
 
@@ -268,7 +270,7 @@ def harmonize(df, **kwargs):
     # TODO: Some entries have and other don't have domain name -> Create additional cols (SourceDomainName)
     # Some entries are empty -> Replace by d4_null
 
-    df['SourceComputer_'] = df['SourceComputer_'].str.replace("^\ *$","d4_null")
+    df['SourceComputer_'] = df['SourceComputer_'].str.replace("^\ *$","d4_null",regex=True)
 
     # logon_type -> LogonType_  - - - - - - - - - - - - - - - - - - - - - - - - 
 
@@ -283,7 +285,7 @@ def harmonize(df, **kwargs):
     # remote_user -> TargetUserName_  - - - - - - - - - - - - - - - - - - - - - 
 
     # Some entries are empty -> Replace by d4_null
-    df['TargetUserName_'] = df['TargetUserName_'].str.replace("^\ *$","d4_null")
+    df['TargetUserName_'] = df['TargetUserName_'].str.replace("^\ *$","d4_null",regex=True)
 
     # remote_domain -> TargetComputer_  - - - - - - - - - - - - - - - - - - - - 
 
@@ -291,17 +293,17 @@ def harmonize(df, **kwargs):
 
     # Some entries include a domain -> Created additional col (TargetDomainName_)
     # Some entries are empty -> Replace by d4_null
-    df['TargetComputer_'] = df['TargetComputer_'].str.replace("^\ *$","d4_null")
+    df['TargetComputer_'] = df['TargetComputer_'].str.replace("^\ *$","d4_null",regex=True)
 
     # TargetHostname_ 
     df['TargetHostname_'] = np.where(df['TargetComputer_'].str.match("[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*"), "d4_null", df['TargetComputer_'])
-    df['TargetHostname_'] = df['TargetHostname_'].str.replace("\..*$","")
+    df['TargetHostname_'] = df['TargetHostname_'].str.replace("\..*$","",regex=True)
     df['TargetHostname_'] = df['TargetHostname_'].astype('string')
 
     # TargetDomain_ (derived from TargetHostname_)
     df['TargetDomain_'] = np.where(df['TargetComputer_'].str.match("[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*"), "d4_null", df['TargetComputer_'])
-    df['TargetDomain_'] = df['TargetDomain_'].str.replace("^[^\.]*\.","")
-    df['TargetDomain_'] = df['TargetDomain_'].str.replace("^[^\.]*$","d4_null")
+    df['TargetDomain_'] = df['TargetDomain_'].str.replace("^[^\.]*\.","",regex=True)
+    df['TargetDomain_'] = df['TargetDomain_'].str.replace("^[^\.]*$","d4_null",regex=True)
     df['TargetDomain_'] = df['TargetDomain_'].astype('string')
 
     # TargetIP_ (derived from TargetHostname_)
@@ -430,6 +432,124 @@ def analysis_find_powershell(obj, *args, **kwargs):
     df = obj
 
     return df.xgrep("*", "powershell", "t" ).spl(out=True, ret=True)
+
+
+def ml_logons_anomalies(df, model="simple_autoencoder", top_n=50, train_epochs = 5): # iforest | simple_autoencoder
+    # 1) FEATURE ENGINEERING
+    logondf = df[(df['EventID_'] == 4624) | (df['EventID_'] == 4625)].astype(str)
+    filtered_logondf = logondf[['Timestamp_', 'TargetUserName_','LogonType_','EventID_']]  # Row selection for the analysis
+    filtered_logondf.insert(1, 'LatMov_', "[" + logondf['SourceIP_'] + "]->[" + logondf['ComputerName_'] + "]")  # Combine two columns [src_ip]->[dst_hostname]
+    
+    # 2) DATA PROCESSING (Group samples by Timeslot, LatMov & User)
+    timestamp, latmov, target_user, logon_type, ev_4624, ev_4625 = [],[],[],[],[],[]
+
+    filtered_logondf.loc[:, 'Timestamp_'] = pd.to_datetime(filtered_logondf['Timestamp_'])
+    for hour, df_hour in filtered_logondf.groupby(pd.Grouper(key='Timestamp_', freq='T')):  # Group samples by time-windows (T = 1 minute)
+        movs = df_hour['LatMov_'].unique()
+        for mov in movs:  # Group samples by Lateral Movement
+            mov_df = df_hour[df_hour['LatMov_']==mov]
+            usrs = mov_df['TargetUserName_'].unique()
+            for usr in usrs:  # Group samples by User
+                usr_df = mov_df[mov_df['TargetUserName_']==usr]
+                types = usr_df['LogonType_'].unique()
+                for type in types:
+                    type_df = usr_df[usr_df['LogonType_']==type]
+                    timestamp.append(hour)
+                    latmov.append(type_df['LatMov_'].iloc[0])
+                    target_user.append(usr)
+                    logon_type.append(type)
+                    ev_4624.append(type_df['EventID_'].str.count('4624').sum())
+                    ev_4625.append(type_df['EventID_'].str.count('4625').sum())
+
+    analysis_df = pd.DataFrame({
+        'Timestamp_': timestamp,
+        'LatMov_': latmov,
+        'TargetUserName_': target_user,
+        'LogonType_': logon_type,
+        'EventID_4624_': ev_4624,
+        'EventID_4625_': ev_4625
+    })
+
+    # 3) CONVERT CATEGORICAL FEATURES INTO NUMERICAL FEATURES (One-Hot Encoding)
+    dumies = pd.get_dummies(analysis_df[['LogonType_','TargetUserName_','LatMov_']]).astype(int)
+    train_df = pd.concat([dumies, analysis_df[['EventID_4624_','EventID_4625_']]], axis=1)
+
+    # 4) ANOMALY DETECTION
+    if model == 'iforest':
+        from sklearn.ensemble import IsolationForest
+        iforest = IsolationForest(
+                        n_estimators  = 1000,
+                        max_samples   ='auto',
+                        contamination = 0.1,
+                        random_state  = 1,
+                    )
+
+        iforest.fit(X=train_df.values)
+        anomaly_scores = iforest.decision_function(train_df.values)
+        anomaly_predictions = iforest.predict(train_df.values)
+        anomaly_predictions[anomaly_predictions == 1] = 0
+        anomaly_predictions[anomaly_predictions == -1] = 1
+
+        anomaly_df = analysis_df[anomaly_predictions.astype(bool)].copy()
+        a_score = list(anomaly_scores[anomaly_predictions.astype(bool)])
+        anomaly_df['score'] = a_score
+        output = anomaly_df.sort_values(by=['score']).reset_index(drop=True)
+        return output[0:top_n]
+
+    elif model == 'simple_autoencoder':
+        import tensorflow as tf
+        from tensorflow.keras import Model, Sequential
+        from tensorflow.keras.layers import Dense, Dropout
+        from sklearn.preprocessing import MinMaxScaler
+        min_max_scaler = MinMaxScaler(feature_range=(0, 1))  
+        x_train_scaled = min_max_scaler.fit_transform(train_df.copy())  # Normalization
+        x_test_scaled = x_train_scaled
+
+        class AutoEncoder(Model):
+            def __init__(self, output_units):
+                super().__init__()
+                self.encoder = Sequential([  # ENCODER
+                Dense(32, activation='relu'),
+                Dropout(0.1),
+                Dense(16, activation='relu'),
+                Dropout(0.1),
+                Dense(4, activation='relu')])
+
+                self.decoder = Sequential([  # DECODER
+                Dense(16, activation='relu'),
+                Dense(32, activation='relu'),
+                Dense(output_units, activation='sigmoid')])
+            
+            def call(self, inputs):
+                encoded = self.encoder(inputs)
+                decoded = self.decoder(encoded)
+                return decoded
+
+        def get_predictions(model, x_test_scaled):
+            predictions = model.predict(x_test_scaled)
+            errors = tf.keras.losses.msle(predictions, x_test_scaled)
+            return errors
+        
+        # TRAIN AUTOENCODER
+        print("Training Autoencoder...")
+        print("_____________________________________________________________________________________")
+        model = AutoEncoder(output_units=x_train_scaled.shape[1])
+        model.compile(loss='msle', metrics=['mse'], optimizer='adam')
+
+        history = model.fit(
+            x_train_scaled,
+            x_train_scaled,
+            epochs=train_epochs,
+            batch_size=10)
+
+        errors = get_predictions(model, x_test_scaled)
+        anomaly_df = analysis_df.copy()
+        anomaly_df['score'] = errors
+        output = anomaly_df.sort_values(by=['score'], ascending=False).reset_index(drop=True)
+        return output[0:top_n]
+
+    else:
+        raise ValueError("Error: model '" + model + "' not supported. Try 'iforest' or 'simple_autoencoder'")
 
 # DATAFRAME ACCESSOR ##########################################################
 

@@ -38,8 +38,8 @@ class Seq2seqData:
             lm_dset = pd.read_csv(lm_dset)
             lm_dset = lm_dset.astype(str)
             lm_dset['path'] = lm_dset['path'].apply(literal_eval)
-        lm_dset['time'] = pd.to_datetime(lm_dset['time'], format='%Y-%m-%d')
-        lm_dset = lm_dset[(lm_dset['time'] >= from_date) & (lm_dset['time'] <= to_date)]
+        lm_dset['date'] = pd.to_datetime(lm_dset['date'], format='%Y-%m-%d')
+        lm_dset = lm_dset[(lm_dset['date'] >= from_date) & (lm_dset['date'] <= to_date)]
         model = Word2Vec(list(lm_dset['path']), vector_size=0, min_count=min_count)
         node_list = model.wv.index_to_key
         self.vocab_size = len(node_list)+5
